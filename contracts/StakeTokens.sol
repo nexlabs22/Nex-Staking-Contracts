@@ -8,8 +8,10 @@ contract StakeTokens {
     using SafeERC20 for IERC20;
 
     IERC20 public nexLabs;
-    IERC20 public usdc;
-    IERC20 public dinariUsdc;
+    IERC20 public anfi;
+    IERC20 public crypto5;
+    IERC20 public magnificent7Index;
+    IERC20 public arbitrumIndex;
 
     uint176 private _nextId = 1;
 
@@ -45,19 +47,27 @@ contract StakeTokens {
 
     constructor(
         address _nexLabsAddress,
-        address _usdcAddress,
-        address _dinariUsdcAddress,
+        address _anfiAddress,
+        address _crypto5Address,
+        address _magnificent7Index,
+        address _arbitrumIndex,
         uint256 _nexLabsAPY,
-        uint256 _usdcAPY,
-        uint256 _dinariUsdcAPY
+        uint256 _anfiAPY,
+        uint256 _crypto5APY,
+        uint256 _magnificent7IndexAPY,
+        uint256 _arbitrumIndexAPY
     ) {
         nexLabs = IERC20(_nexLabsAddress);
-        usdc = IERC20(_usdcAddress);
-        dinariUsdc = IERC20(_dinariUsdcAddress);
+        anfi = IERC20(_anfiAddress);
+        crypto5 = IERC20(_crypto5Address);
+        magnificent7Index = IERC20(_magnificent7Index);
+        arbitrumIndex = IERC20(_arbitrumIndex);
 
         tokensAPY[_nexLabsAddress] = _nexLabsAPY;
-        tokensAPY[_usdcAddress] = _usdcAPY;
-        tokensAPY[_dinariUsdcAddress] = _dinariUsdcAPY;
+        tokensAPY[_anfiAddress] = _anfiAPY;
+        tokensAPY[_crypto5Address] = _crypto5APY;
+        tokensAPY[_magnificent7Index] = _magnificent7IndexAPY;
+        tokensAPY[_arbitrumIndex] = _arbitrumIndexAPY;
     }
 
     function positions(uint256 positionId)
@@ -158,7 +168,7 @@ contract StakeTokens {
         StakePositions storage position = _positions[positionId];
         require(position.owner == msg.sender, "You are not the owner of this position");
         uint256 rewardAmount = position.rewardEarned + calculateReward(position);
-        require(rewardAmount > 0, "You did not earn any rewards!");
+        // require(rewardAmount > 0, "You did not earn any rewards!");
 
         if (position.autoCompound) {
             position.stakeAmount += rewardAmount;
@@ -174,17 +184,37 @@ contract StakeTokens {
 
     function calculateReward(StakePositions storage position) internal view returns (uint256) {
         uint256 duration = block.timestamp - position.startTime;
-        uint256 periodCount = duration / 365 days;
+        uint256 dailyRate = position.apy * 1e18 / 365; // Calculate daily rate with precision
 
-        if (periodCount > 0 && position.autoCompound) {
+        if (position.autoCompound) {
             uint256 compoundedStakeAmount = position.stakeAmount;
-            for (uint256 i = 0; i < periodCount; i++) {
-                uint256 reward = (compoundedStakeAmount * position.apy) / 100;
-                compoundedStakeAmount += reward;
+            for (uint256 i = 0; i < duration / 1 days; i++) {
+                uint256 interest = (compoundedStakeAmount * dailyRate) / 1e20; // Maintain precision
+                compoundedStakeAmount += interest;
             }
             return compoundedStakeAmount - position.stakeAmount;
         } else {
-            return (position.stakeAmount * position.apy * duration) / (365 days * 100);
+            return (position.stakeAmount * dailyRate * duration / 1 days) / 1e20;
         }
     }
+
+    // function calculateReward(StakePositions storage position) internal view returns (uint256) {
+    //     uint256 duration = block.timestamp - position.startTime;
+
+    //     uint256 dailyRate = position.apy / 365;
+
+    //     if (position.autoCompound) {
+    //         uint256 compoundedStakeAmount = position.stakeAmount;
+    //         uint256 compoundedReward;
+
+    //         for (uint256 i = 0; i < duration / 1 days; i++) {
+    //             compoundedReward = (compoundedStakeAmount * dailyRate) / 100;
+    //             compoundedStakeAmount += compoundedReward;
+    //         }
+
+    //         return compoundedStakeAmount - position.stakeAmount;
+    //     } else {
+    //         return (position.stakeAmount * dailyRate * duration) / (100 * 1 days);
+    //     }
+    // }
 }

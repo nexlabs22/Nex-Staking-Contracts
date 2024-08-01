@@ -20,6 +20,19 @@ contract StakeTokensTest is Test {
     uint256 public dinariUsdcTokenAPY = 15;
     uint256 public nexLabsTokenAPY = 20;
 
+    struct StakePositions {
+        address owner;
+        address stakeToken;
+        address rewardToken;
+        uint256 stakeAmount;
+        uint256 rewardEarned;
+        uint256 apy;
+        uint256 startTime;
+        bool autoCompound;
+    }
+
+    mapping(uint256 => StakePositions) public _positions;
+
     event Staked(
         uint256 indexed positionId,
         address indexed user,
@@ -66,6 +79,34 @@ contract StakeTokensTest is Test {
         vm.stopPrank();
     }
 
+    function testPositions() public {
+        vm.startPrank(user);
+
+        stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, true);
+
+        (
+            address owner,
+            address stakeToken,
+            address rewardToken,
+            uint256 stakeAmountRetrieved,
+            uint256 rewardEarned,
+            uint256 apy,
+            uint256 startTime,
+            bool autoCompound
+        ) = stakeTokens.positions(1);
+
+        assertEq(owner, user);
+        assertEq(stakeToken, address(usdcToken));
+        assertEq(rewardToken, address(nexLabsToken));
+        assertEq(stakeAmountRetrieved, stakeAmount);
+        assertEq(rewardEarned, 0);
+        assertEq(apy, usdcTokenAPY);
+        assertEq(startTime, block.timestamp);
+        assertTrue(autoCompound);
+
+        vm.stopPrank();
+    }
+
     function testStake() public {
         vm.startPrank(user);
 
@@ -109,6 +150,110 @@ contract StakeTokensTest is Test {
 
         (,,, uint256 finalStakeAmount,,,,) = stakeTokens.positions(1);
         assertEq(finalStakeAmount, 0);
+
+        vm.stopPrank();
+    }
+
+    function testUnstakeWithAutoCompoundWithDifferentTokenReward() public {
+        vm.startPrank(user);
+
+        stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, true);
+
+        vm.warp(block.timestamp + 365 days);
+
+        uint256 expectedReward = compoundInterest(stakeAmount, usdcTokenAPY, 1, true);
+        console.log("Stake amount", stakeAmount / DECIMAL);
+        console.log("Expected reward", expectedReward / DECIMAL);
+        uint256 userRewardBalanceBeforeUnstake = nexLabsToken.balanceOf(user);
+        uint256 userUsdcBalanceBeforeUnstake = usdcToken.balanceOf(user);
+
+        console.log("User Reward Balance Before Unstake", userRewardBalanceBeforeUnstake / DECIMAL);
+        console.log("User USDC Balance Before Unstake", userUsdcBalanceBeforeUnstake / DECIMAL);
+
+        assertEq(userUsdcBalanceBeforeUnstake, 0);
+
+        stakeTokens.unStake(1);
+        uint256 userRewardBalanceAfterUnstake = nexLabsToken.balanceOf(user);
+        uint256 userUsdcBalanceAfterUnstake = usdcToken.balanceOf(user);
+
+        console.log("User Reward Balance After Unstake", userRewardBalanceAfterUnstake / DECIMAL);
+        console.log("User USDC Balance After Unstake", userUsdcBalanceAfterUnstake / DECIMAL);
+
+        assertEq(userRewardBalanceBeforeUnstake + expectedReward, userRewardBalanceAfterUnstake);
+        assertEq(userUsdcBalanceAfterUnstake, stakeAmount);
+
+        vm.stopPrank();
+    }
+
+    function testUnstakeWithoutAutoCompoundWithDifferentTokenReward() public {
+        vm.startPrank(user);
+
+        stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, false);
+
+        vm.warp(block.timestamp + 365 days);
+
+        uint256 expectedReward = compoundInterest(stakeAmount, usdcTokenAPY, 1, false);
+        console.log("Stake amount", stakeAmount / DECIMAL);
+        console.log("Expected reward", expectedReward / DECIMAL);
+        uint256 userRewardBalanceBeforeUnstake = nexLabsToken.balanceOf(user);
+        uint256 userUsdcBalanceBeforeUnstake = usdcToken.balanceOf(user);
+
+        console.log("User Reward Balance Before Unstake", userRewardBalanceBeforeUnstake / DECIMAL);
+        console.log("User USDC Balance Before Unstake", userUsdcBalanceBeforeUnstake / DECIMAL);
+
+        assertEq(userUsdcBalanceBeforeUnstake, 0);
+
+        stakeTokens.unStake(1);
+        uint256 userRewardBalanceAfterUnstake = nexLabsToken.balanceOf(user);
+        uint256 userUsdcBalanceAfterUnstake = usdcToken.balanceOf(user);
+
+        console.log("User Reward Balance After Unstake", userRewardBalanceAfterUnstake / DECIMAL);
+        console.log("User USDC Balance After Unstake", userUsdcBalanceAfterUnstake / DECIMAL);
+
+        assertEq(userRewardBalanceBeforeUnstake + expectedReward, userRewardBalanceAfterUnstake);
+        assertEq(userUsdcBalanceAfterUnstake, stakeAmount);
+
+        vm.stopPrank();
+    }
+
+    function testUnstakeWithAutoCompoundWithSameTokenReward() public {
+        vm.startPrank(user);
+
+        stakeTokens.stake(address(usdcToken), address(usdcToken), stakeAmount, true);
+
+        vm.warp(block.timestamp + 365 days);
+
+        uint256 expectedReward = (stakeAmount * usdcTokenAPY * 365 days) / (365 days * 100);
+
+        stakeTokens.unStake(1);
+
+        (,,, uint256 finalStakeAmount, uint256 rewardEarned,,,) = stakeTokens.positions(1);
+        assertEq(finalStakeAmount, 0);
+        assertEq(rewardEarned, 0);
+
+        uint256 userBalance = usdcToken.balanceOf(user);
+        assertEq(userBalance, stakeAmount + expectedReward);
+
+        vm.stopPrank();
+    }
+
+    function testUnstakeWithoutAutoCompoundWithSameTokenReward() public {
+        vm.startPrank(user);
+
+        stakeTokens.stake(address(usdcToken), address(usdcToken), stakeAmount, false);
+
+        vm.warp(block.timestamp + 365 days);
+
+        uint256 expectedReward = (stakeAmount * usdcTokenAPY * 365 days) / (365 days * 100);
+
+        stakeTokens.unStake(1);
+
+        (,,, uint256 finalStakeAmount, uint256 rewardEarned,,,) = stakeTokens.positions(1);
+        assertEq(finalStakeAmount, 0);
+        assertEq(rewardEarned, 0);
+
+        uint256 userBalance = usdcToken.balanceOf(user);
+        assertEq(userBalance, stakeAmount + expectedReward);
 
         vm.stopPrank();
     }
@@ -195,5 +340,45 @@ contract StakeTokensTest is Test {
 
         vm.expectRevert("Only owner can increase the staked amount!");
         stakeTokens.increaseStakeAmount(1, 500 * DECIMAL);
+    }
+
+    function testNumberOfStakersByTokenAddress() public {
+        vm.startPrank(user);
+
+        stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, true);
+
+        uint256 initialStakers = stakeTokens.numberOfStakersByTokenAddress(address(usdcToken));
+        assertEq(initialStakers, 1);
+
+        address user2 = address(2);
+        usdcToken.mint(user2, stakeAmount);
+        vm.startPrank(user2);
+        usdcToken.approve(address(stakeTokens), stakeAmount);
+        stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, false);
+
+        uint256 secondStakers = stakeTokens.numberOfStakersByTokenAddress(address(usdcToken));
+        assertEq(secondStakers, 2);
+
+        uint256 finalStakers = stakeTokens.numberOfStakersByTokenAddress(address(usdcToken));
+        assertEq(finalStakers, 2);
+
+        vm.stopPrank();
+    }
+
+    function compoundInterest(uint256 principal, uint256 rate, uint256 periods, bool autoCompound)
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 originalPrincipal = principal;
+        if (autoCompound) {
+            for (uint256 i = 0; i < periods; i++) {
+                uint256 interest = (principal * rate) / 100;
+                principal += interest;
+            }
+        } else {
+            principal += (principal * rate * periods) / 100;
+        }
+        return principal - originalPrincipal;
     }
 }

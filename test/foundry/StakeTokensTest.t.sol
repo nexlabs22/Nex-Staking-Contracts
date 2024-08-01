@@ -20,19 +20,6 @@ contract StakeTokensTest is Test {
     uint256 public dinariUsdcTokenAPY = 15;
     uint256 public nexLabsTokenAPY = 20;
 
-    struct StakePositions {
-        address owner;
-        address stakeToken;
-        address rewardToken;
-        uint256 stakeAmount;
-        uint256 rewardEarned;
-        uint256 apy;
-        uint256 startTime;
-        bool autoCompound;
-    }
-
-    mapping(uint256 => StakePositions) public _positions;
-
     event Staked(
         uint256 indexed positionId,
         address indexed user,
@@ -64,15 +51,19 @@ contract StakeTokensTest is Test {
         );
         vm.stopBroadcast();
 
-        nexLabsToken.mint(user, stakeAmount);
-        usdcToken.mint(user, stakeAmount);
-        dinariUsdcToken.mint(user, stakeAmount);
+        mintAndApproveTokens(user);
+    }
+
+    function mintAndApproveTokens(address _user) internal {
+        nexLabsToken.mint(_user, stakeAmount);
+        usdcToken.mint(_user, stakeAmount);
+        dinariUsdcToken.mint(_user, stakeAmount);
 
         nexLabsToken.mint(address(stakeTokens), stakeAmount * 100);
         usdcToken.mint(address(stakeTokens), stakeAmount * 100);
         dinariUsdcToken.mint(address(stakeTokens), stakeAmount * 100);
 
-        vm.startPrank(user);
+        vm.startPrank(_user);
         nexLabsToken.approve(address(stakeTokens), stakeAmount);
         usdcToken.approve(address(stakeTokens), stakeAmount);
         dinariUsdcToken.approve(address(stakeTokens), stakeAmount);
@@ -81,7 +72,6 @@ contract StakeTokensTest is Test {
 
     function testPositions() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, true);
 
         (
@@ -109,9 +99,9 @@ contract StakeTokensTest is Test {
 
     function testStake() public {
         vm.startPrank(user);
-
         vm.expectEmit(true, true, true, true);
         emit Staked(1, user, address(usdcToken), address(nexLabsToken), stakeAmount, false, block.timestamp);
+
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, false);
 
         (address owner,,, uint256 amount,,,,) = stakeTokens.positions(1);
@@ -123,15 +113,15 @@ contract StakeTokensTest is Test {
 
     function testIncreaseStakeAmount() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, false);
-        uint256 additionalStake = 500 * DECIMAL;
 
+        uint256 additionalStake = 500 * DECIMAL;
         usdcToken.mint(user, additionalStake);
         usdcToken.approve(address(stakeTokens), additionalStake);
 
         vm.expectEmit(true, true, true, true);
         emit StakedIncreased(1, user, address(usdcToken), additionalStake, block.timestamp);
+
         stakeTokens.increaseStakeAmount(1, additionalStake);
 
         (,,, uint256 totalStakeAmount,,,,) = stakeTokens.positions(1);
@@ -142,8 +132,8 @@ contract StakeTokensTest is Test {
 
     function testUnstake() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, false);
+
         vm.expectEmit(true, true, true, true);
         emit UnStaked(1, user, address(usdcToken), stakeAmount, block.timestamp);
         stakeTokens.unStake(1);
@@ -156,28 +146,18 @@ contract StakeTokensTest is Test {
 
     function testUnstakeWithAutoCompoundWithDifferentTokenReward() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, true);
 
         vm.warp(block.timestamp + 365 days);
-
         uint256 expectedReward = compoundInterest(stakeAmount, usdcTokenAPY, 1, true);
-        console.log("Stake amount", stakeAmount / DECIMAL);
-        console.log("Expected reward", expectedReward / DECIMAL);
+
         uint256 userRewardBalanceBeforeUnstake = nexLabsToken.balanceOf(user);
         uint256 userUsdcBalanceBeforeUnstake = usdcToken.balanceOf(user);
-
-        console.log("User Reward Balance Before Unstake", userRewardBalanceBeforeUnstake / DECIMAL);
-        console.log("User USDC Balance Before Unstake", userUsdcBalanceBeforeUnstake / DECIMAL);
-
         assertEq(userUsdcBalanceBeforeUnstake, 0);
 
         stakeTokens.unStake(1);
         uint256 userRewardBalanceAfterUnstake = nexLabsToken.balanceOf(user);
         uint256 userUsdcBalanceAfterUnstake = usdcToken.balanceOf(user);
-
-        console.log("User Reward Balance After Unstake", userRewardBalanceAfterUnstake / DECIMAL);
-        console.log("User USDC Balance After Unstake", userUsdcBalanceAfterUnstake / DECIMAL);
 
         assertEq(userRewardBalanceBeforeUnstake + expectedReward, userRewardBalanceAfterUnstake);
         assertEq(userUsdcBalanceAfterUnstake, stakeAmount);
@@ -187,28 +167,18 @@ contract StakeTokensTest is Test {
 
     function testUnstakeWithoutAutoCompoundWithDifferentTokenReward() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, false);
 
         vm.warp(block.timestamp + 365 days);
-
         uint256 expectedReward = compoundInterest(stakeAmount, usdcTokenAPY, 1, false);
-        console.log("Stake amount", stakeAmount / DECIMAL);
-        console.log("Expected reward", expectedReward / DECIMAL);
+
         uint256 userRewardBalanceBeforeUnstake = nexLabsToken.balanceOf(user);
         uint256 userUsdcBalanceBeforeUnstake = usdcToken.balanceOf(user);
-
-        console.log("User Reward Balance Before Unstake", userRewardBalanceBeforeUnstake / DECIMAL);
-        console.log("User USDC Balance Before Unstake", userUsdcBalanceBeforeUnstake / DECIMAL);
-
         assertEq(userUsdcBalanceBeforeUnstake, 0);
 
         stakeTokens.unStake(1);
         uint256 userRewardBalanceAfterUnstake = nexLabsToken.balanceOf(user);
         uint256 userUsdcBalanceAfterUnstake = usdcToken.balanceOf(user);
-
-        console.log("User Reward Balance After Unstake", userRewardBalanceAfterUnstake / DECIMAL);
-        console.log("User USDC Balance After Unstake", userUsdcBalanceAfterUnstake / DECIMAL);
 
         assertEq(userRewardBalanceBeforeUnstake + expectedReward, userRewardBalanceAfterUnstake);
         assertEq(userUsdcBalanceAfterUnstake, stakeAmount);
@@ -218,11 +188,9 @@ contract StakeTokensTest is Test {
 
     function testUnstakeWithAutoCompoundWithSameTokenReward() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(usdcToken), stakeAmount, true);
 
         vm.warp(block.timestamp + 365 days);
-
         uint256 expectedReward = (stakeAmount * usdcTokenAPY * 365 days) / (365 days * 100);
 
         stakeTokens.unStake(1);
@@ -239,11 +207,9 @@ contract StakeTokensTest is Test {
 
     function testUnstakeWithoutAutoCompoundWithSameTokenReward() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(usdcToken), stakeAmount, false);
 
         vm.warp(block.timestamp + 365 days);
-
         uint256 expectedReward = (stakeAmount * usdcTokenAPY * 365 days) / (365 days * 100);
 
         stakeTokens.unStake(1);
@@ -260,24 +226,18 @@ contract StakeTokensTest is Test {
 
     function testWithdrawRewardWithAutoCompound() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, true);
 
         vm.warp(block.timestamp + 365 days);
 
         (,,, uint256 stakeAmountBeforeReward, uint256 rewardBeforeEarned,,,) = stakeTokens.positions(1);
-        console.log("Stake amount Before Reward", stakeAmountBeforeReward / DECIMAL);
-
         uint256 expectedReward = (stakeAmount * usdcTokenAPY * 365 days) / (365 days * 100);
 
         stakeTokens.withdrawReward(1);
 
         (,,, uint256 stakeAmountAfterReward, uint256 rewardAfterEarned,,,) = stakeTokens.positions(1);
-        console.log("Expected Reward", expectedReward / DECIMAL);
-        console.log("Stake amount After Reward", stakeAmountAfterReward / DECIMAL);
 
         stakeAmountBeforeReward += expectedReward;
-
         assertEq(stakeAmountAfterReward, stakeAmountBeforeReward);
         assertEq(rewardBeforeEarned, rewardAfterEarned);
 
@@ -286,28 +246,19 @@ contract StakeTokensTest is Test {
 
     function testWithdrawRewardWithoutAutoCompound() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, false);
 
         vm.warp(block.timestamp + 365 days);
 
-        (,,, uint256 stakeAmountBeforeReward, uint256 rewardBeforeEarned,,,) = stakeTokens.positions(1);
-        console.log("Stake amount Before Reward", stakeAmountBeforeReward / DECIMAL);
-
+        (,,,, uint256 rewardBeforeEarned,,,) = stakeTokens.positions(1);
         uint256 expectedReward = (stakeAmount * usdcTokenAPY * 365 days) / (365 days * 100);
 
         stakeTokens.withdrawReward(1);
 
-        (,,, uint256 stakeAmountAfterReward, uint256 rewardAfterEarned,,,) = stakeTokens.positions(1);
-        console.log("Stake amount After Reward", stakeAmountAfterReward / DECIMAL);
-        console.log("Expected Reward", expectedReward / DECIMAL);
-
-        stakeAmountBeforeReward += expectedReward;
-
+        (,,,, uint256 rewardAfterEarned,,,) = stakeTokens.positions(1);
         uint256 userRewardBalance = nexLabsToken.balanceOf(user);
 
         assertEq(rewardBeforeEarned, rewardAfterEarned);
-
         assertEq(userRewardBalance, expectedReward + stakeAmount);
 
         vm.stopPrank();
@@ -315,27 +266,21 @@ contract StakeTokensTest is Test {
 
     function testInvalidRewardToken() public {
         vm.startPrank(user);
-
         vm.expectRevert("Invalid reward token.");
         stakeTokens.stake(address(usdcToken), address(dinariUsdcToken), stakeAmount, false);
-
         vm.stopPrank();
     }
 
     function testZeroStakeAmount() public {
         vm.startPrank(user);
-
         vm.expectRevert("Staking amount must be greater than zero.");
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), 0, false);
-
         vm.stopPrank();
     }
 
     function testOnlyOwnerCanIncreaseStake() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, false);
-
         vm.stopPrank();
 
         vm.expectRevert("Only owner can increase the staked amount!");
@@ -344,7 +289,6 @@ contract StakeTokensTest is Test {
 
     function testNumberOfStakersByTokenAddress() public {
         vm.startPrank(user);
-
         stakeTokens.stake(address(usdcToken), address(nexLabsToken), stakeAmount, true);
 
         uint256 initialStakers = stakeTokens.numberOfStakersByTokenAddress(address(usdcToken));

@@ -149,6 +149,9 @@ contract StakeTokensTest is Test {
 
     function testUnstakeWithAutoCompoundWithDifferentTokenReward() public {
         vm.startPrank(user);
+
+        vm.expectEmit(true, true, true, true);
+        emit Staked(1, user, address(indexToken1), address(nexLabsToken), stakeAmount, true, block.timestamp);
         stakeTokens.stake(address(indexToken1), address(nexLabsToken), stakeAmount, true);
 
         vm.warp(block.timestamp + 365 days);
@@ -158,6 +161,8 @@ contract StakeTokensTest is Test {
         uint256 userIndexToken1BalanceBeforeUnstake = indexToken1.balanceOf(user);
         assertEq(userIndexToken1BalanceBeforeUnstake, 0);
 
+        vm.expectEmit(true, true, true, true);
+        emit UnStaked(1, user, address(indexToken1), stakeAmount, block.timestamp);
         stakeTokens.unStake(1);
         uint256 userRewardBalanceAfterUnstake = nexLabsToken.balanceOf(user);
         uint256 userIndexToken1BalanceAfterUnstake = indexToken1.balanceOf(user);
@@ -170,6 +175,9 @@ contract StakeTokensTest is Test {
 
     function testUnstakeWithoutAutoCompoundWithDifferentTokenReward() public {
         vm.startPrank(user);
+
+        vm.expectEmit(true, true, true, true);
+        emit Staked(1, user, address(indexToken1), address(nexLabsToken), stakeAmount, false, block.timestamp);
         stakeTokens.stake(address(indexToken1), address(nexLabsToken), stakeAmount, false);
 
         vm.warp(block.timestamp + 365 days);
@@ -179,6 +187,8 @@ contract StakeTokensTest is Test {
         uint256 userIndexToken1BalanceBeforeUnstake = indexToken1.balanceOf(user);
         assertEq(userIndexToken1BalanceBeforeUnstake, 0);
 
+        vm.expectEmit(true, true, true, true);
+        emit UnStaked(1, user, address(indexToken1), stakeAmount, block.timestamp);
         stakeTokens.unStake(1);
         uint256 userRewardBalanceAfterUnstake = nexLabsToken.balanceOf(user);
         uint256 userIndexToken1BalanceAfterUnstake = indexToken1.balanceOf(user);
@@ -191,11 +201,17 @@ contract StakeTokensTest is Test {
 
     function testUnstakeWithAutoCompoundWithSameTokenReward() public {
         vm.startPrank(user);
+
+        vm.expectEmit(true, true, true, true);
+        emit Staked(1, user, address(indexToken1), address(indexToken1), stakeAmount, true, block.timestamp);
         stakeTokens.stake(address(indexToken1), address(indexToken1), stakeAmount, true);
 
         vm.warp(block.timestamp + 365 days);
         uint256 expectedReward = compoundInterest(stakeAmount, indexToken1APY, 365, true);
+        // uint256 totalAmount = stakeAmount + expectedReward;
 
+        vm.expectEmit(true, true, true, true);
+        emit UnStaked(1, user, address(indexToken1), stakeAmount, block.timestamp);
         stakeTokens.unStake(1);
 
         (,,, uint256 finalStakeAmount, uint256 rewardEarned,,,) = stakeTokens.positions(1);
@@ -210,11 +226,16 @@ contract StakeTokensTest is Test {
 
     function testUnstakeWithoutAutoCompoundWithSameTokenReward() public {
         vm.startPrank(user);
+
+        vm.expectEmit(true, true, true, true);
+        emit Staked(1, user, address(indexToken1), address(indexToken1), stakeAmount, false, block.timestamp);
         stakeTokens.stake(address(indexToken1), address(indexToken1), stakeAmount, false);
 
         vm.warp(block.timestamp + 365 days);
         uint256 expectedReward = compoundInterest(stakeAmount, indexToken1APY, 365, false);
 
+        vm.expectEmit(true, true, true, true);
+        emit UnStaked(1, user, address(indexToken1), stakeAmount, block.timestamp);
         stakeTokens.unStake(1);
 
         (,,, uint256 finalStakeAmount, uint256 rewardEarned,,,) = stakeTokens.positions(1);
@@ -229,6 +250,9 @@ contract StakeTokensTest is Test {
 
     function testWithdrawRewardWithAutoCompound() public {
         vm.startPrank(user);
+
+        vm.expectEmit(true, true, true, true);
+        emit Staked(1, user, address(indexToken1), address(nexLabsToken), stakeAmount, true, block.timestamp);
         stakeTokens.stake(address(indexToken1), address(nexLabsToken), stakeAmount, true);
 
         vm.warp(block.timestamp + 365 days);
@@ -236,6 +260,8 @@ contract StakeTokensTest is Test {
         (,,, uint256 stakeAmountBeforeReward, uint256 rewardBeforeEarned,,,) = stakeTokens.positions(1);
         uint256 expectedReward = compoundInterest(stakeAmount, indexToken1APY, 365, true);
 
+        vm.expectEmit(true, true, true, true);
+        emit RewardWithdrawn(1, user, expectedReward, block.timestamp);
         stakeTokens.withdrawReward(1);
 
         (,,, uint256 stakeAmountAfterReward, uint256 rewardAfterEarned,,,) = stakeTokens.positions(1);
@@ -249,6 +275,9 @@ contract StakeTokensTest is Test {
 
     function testWithdrawRewardWithoutAutoCompound() public {
         vm.startPrank(user);
+
+        vm.expectEmit(true, true, true, true);
+        emit Staked(1, user, address(indexToken1), address(nexLabsToken), stakeAmount, false, block.timestamp);
         stakeTokens.stake(address(indexToken1), address(nexLabsToken), stakeAmount, false);
 
         vm.warp(block.timestamp + 365 days);
@@ -256,6 +285,8 @@ contract StakeTokensTest is Test {
         (,,,, uint256 rewardBeforeEarned,,,) = stakeTokens.positions(1);
         uint256 expectedReward = compoundInterest(stakeAmount, indexToken1APY, 365, false);
 
+        vm.expectEmit(true, true, true, true);
+        emit RewardWithdrawn(1, user, expectedReward, block.timestamp);
         stakeTokens.withdrawReward(1);
 
         (,,,, uint256 rewardAfterEarned,,,) = stakeTokens.positions(1);

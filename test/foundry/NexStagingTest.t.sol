@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Test, console} from "forge-std/Test.sol";
 import {NexStaging} from "../../contracts/NexStaging.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {CalculationHelper} from "../../contracts/libraries/CalculationHelper.sol";
 
 contract NexStagingTest is Test {
     NexStaging public nexStaging;
@@ -375,32 +376,6 @@ contract NexStagingTest is Test {
         vm.stopPrank();
     }
 
-    /// @notice Calculates the compound interest
-    /// @param principal Principal amount
-    /// @param rate Interest rate
-    /// @param durationInDays Duration in days
-    /// @param autoCompound Boolean indicating if auto-compound is enabled
-    /// @return Final amount after compound interest calculation
-    function compoundInterest(uint256 principal, uint256 rate, uint256 durationInDays, bool autoCompound)
-        internal
-        pure
-        returns (uint256)
-    {
-        uint256 originalPrincipal = principal;
-        uint256 dailyRate = rate * 1e18 / 365;
-
-        if (autoCompound) {
-            for (uint256 i = 0; i < durationInDays; i++) {
-                uint256 interest = (principal * dailyRate) / 1e20;
-                principal += interest;
-            }
-        } else {
-            principal += (principal * dailyRate * durationInDays) / 1e20;
-        }
-
-        return principal - originalPrincipal;
-    }
-
     function testIncreaseStakeAmountByZero() public {
         vm.startPrank(user);
 
@@ -445,6 +420,121 @@ contract NexStagingTest is Test {
         nexStaging.increaseStakeAmount(9999, additionalStake); // Using a high number to simulate non-existent position
 
         vm.stopPrank();
+    }
+
+    function testNexStagingCalculationFunction() public {
+        vm.startPrank(user);
+        (uint256 testContractFee, uint256 testContractAmountAfterFee) = calculateAmountAfterFeeAndFee(stakeAmount);
+        (uint256 mainContractFee, uint256 mainContractAmountAfterFee) =
+            CalculationHelper.calculateAmountAfterFeeAndFee(stakeAmount, feePercent);
+        nexStaging.stake(address(indexToken1), address(nexLabsToken), stakeAmount, false);
+
+        assertEq(testContractFee, mainContractFee);
+        assertEq(testContractAmountAfterFee, mainContractAmountAfterFee);
+
+        vm.warp(block.timestamp + 365);
+
+        vm.stopPrank();
+    }
+
+    /// @notice This function is for log the balances before/staking staking and before/after unstaking
+    function testBalancesAfterActions() public {
+        vm.startPrank(user);
+        console.log("***** Before Staking *****");
+        uint256 contractIndex1BalanceBeforeStaking = indexToken1.balanceOf(address(nexStaging));
+        uint256 contractRewardBalanceBeforeStaking = nexLabsToken.balanceOf(address(nexStaging));
+        console.log("Contract Index1 Balance Before Staking", contractIndex1BalanceBeforeStaking);
+        console.log("COntract Reward Balance Before Staking", contractRewardBalanceBeforeStaking);
+
+        uint256 userIndex1BalanceBeforeStaking = indexToken1.balanceOf(user);
+        uint256 userRewardBalanceBeforeStaking = nexLabsToken.balanceOf(user);
+        console.log("User Index1 Balance Before Staking", userIndex1BalanceBeforeStaking);
+        console.log("User Reward Balance Before Staking", userRewardBalanceBeforeStaking);
+
+        (uint256 feeAmountForStaking, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(stakeAmount);
+        console.log("Fee Amount For Staking", feeAmountForStaking);
+        console.log("Amount After Fee", amountAfterFee);
+        nexStaging.stake(address(indexToken1), address(nexLabsToken), stakeAmount, false);
+
+        console.log("");
+        console.log("***** After Staking *****");
+
+        vm.warp(block.timestamp + 365 days);
+        uint256 expectedReward = compoundInterest(amountAfterFee, indexToken1APY, 365, false);
+
+        console.log("Expected reward", expectedReward /* / DECIMAL*/ );
+
+        uint256 contractIndex1BalanceAfterStaking = indexToken1.balanceOf(address(nexStaging));
+        uint256 contractRewardBalanceAfterStaking = nexLabsToken.balanceOf(address(nexStaging));
+        console.log("Contract Index1 Balance After Staking", contractIndex1BalanceAfterStaking);
+        console.log("Contract Reward Balance After Staking", contractRewardBalanceAfterStaking);
+
+        uint256 userIndex1BalanceAfterStaking = indexToken1.balanceOf(user);
+        uint256 userRewardBalanceAfterStaking = nexLabsToken.balanceOf(user);
+
+        console.log("User Index1 Balance After Staking", userIndex1BalanceAfterStaking);
+        console.log("User Reward Balance After Staking", userRewardBalanceAfterStaking);
+        console.log("-----------------------------------------------------------------------------------------");
+        console.log("***** After UnStaking *****");
+        nexStaging.unStake(1);
+
+        (uint256 rewardFeeAmountForUnstaking, uint256 rewardAmountUnstakingAfterFee) =
+            calculateAmountAfterFeeAndFee(expectedReward);
+        console.log("Reward Fee Amount For Unstaking", rewardFeeAmountForUnstaking);
+        console.log("Reward Amount After Fee Unstaking", rewardAmountUnstakingAfterFee);
+
+        uint256 contractIndex1BalanceAfterUnstake = indexToken1.balanceOf(address(nexStaging));
+        uint256 contractRewardBalanceAfterUnstake = nexLabsToken.balanceOf(address(nexStaging));
+        console.log("Contract Index1 Balance After UnStaking", contractIndex1BalanceAfterUnstake);
+        console.log("Contract Reward Balance After UnStaking", contractRewardBalanceAfterUnstake);
+
+        uint256 userIndex1BalanceAfterUnStaking = indexToken1.balanceOf(user);
+        uint256 userRewardBalanceAfterUnStaking = nexLabsToken.balanceOf(user);
+
+        console.log("User Index1 Balance After UnStaking", userIndex1BalanceAfterUnStaking);
+        console.log("User Reward Balance After UnStaking", userRewardBalanceAfterUnStaking);
+
+        console.log("-----------------------------------------------------------------------------------------");
+
+        (,,, uint256 stakedAmount, uint256 rewardEarned,,,) = nexStaging.positions(1);
+
+        console.log("Reward Earned", rewardEarned);
+        console.log("Staked Amount", stakedAmount);
+
+        assertEq(rewardEarned, 0);
+        assertEq(stakedAmount, 0);
+
+        vm.stopPrank();
+    }
+
+    ///////////////////////////////////////////////////////
+    ///////////// Calculation Functions ///////////////////
+    ///////////////////////////////////////////////////////
+
+    /// @notice Calculates the compound interest
+    /// @param principal Principal amount
+    /// @param rate Interest rate
+    /// @param durationInDays Duration in days
+    /// @param autoCompound Boolean indicating if auto-compound is enabled
+    /// @return Final amount after compound interest calculation
+    function compoundInterest(uint256 principal, uint256 rate, uint256 durationInDays, bool autoCompound)
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 originalPrincipal = principal;
+        uint256 dailyRate = rate * 1e18 / 365;
+
+        if (autoCompound) {
+            for (uint256 i = 0; i < durationInDays; i++) {
+                uint256 interest = (principal * dailyRate) / 1e20;
+                principal += interest;
+            }
+        } else {
+            principal += (principal * dailyRate * durationInDays) / 1e20;
+        }
+
+        return principal - originalPrincipal;
     }
 
     /// @notice Calculates the amount after fee and the fee itself

@@ -10,6 +10,8 @@ import {CalculationHelper} from "./libraries/CalculationHelper.sol";
 contract NexStaging {
     using SafeERC20 for IERC20;
 
+    address public owner;
+
     // ERC20 token used for rewards
     IERC20 public nexLabs;
     // Fee percentage for staking operations
@@ -99,6 +101,7 @@ contract NexStaging {
         uint256 _feePercent
     ) {
         require(_tokenAddresses.length == _tokenAPYs.length, "Mismatched token and APY lengths");
+        owner = msg.sender;
         nexLabs = IERC20(_nexLabsAddress);
         feePercent = _feePercent;
 
@@ -109,7 +112,7 @@ contract NexStaging {
 
     /// @notice Function to get details of a staking position
     /// @param positionId ID of the staking position
-    /// @return owner Address of the position owner
+    /// @return positionOwner Address of the position owner
     /// @return stakeToken Address of the token being staked
     /// @return rewardToken Address of the token given as reward
     /// @return stakeAmount Amount of tokens staked
@@ -121,7 +124,7 @@ contract NexStaging {
         external
         view
         returns (
-            address owner,
+            address positionOwner,
             address stakeToken,
             address rewardToken,
             uint256 stakeAmount,
@@ -218,20 +221,16 @@ contract NexStaging {
 
         // Calculate the total reward amount
         uint256 rewardAmount = position.rewardEarned + CalculationHelper.calculateReward(position);
-        // (, uint256 amountAfterFee) =
-        // CalculationHelper.calculateAmountAfterFeeAndFee(position.stakeAmount, feePercent);
-        (uint256 fee, uint256 rewardAmountAfterFee) =
-            CalculationHelper.calculateAmountAfterFeeAndFee(rewardAmount, feePercent);
+
+        (, uint256 rewardAmountAfterFee) = CalculationHelper.calculateAmountAfterFeeAndFee(rewardAmount, feePercent);
 
         // Transfer the unstaked amount and rewards to the user, and the fee to the contract
         if (position.stakeToken == position.rewardToken) {
             uint256 totalAmount = position.stakeAmount + rewardAmountAfterFee;
             IERC20(position.stakeToken).safeTransfer(msg.sender, totalAmount);
-            IERC20(position.stakeToken).safeTransfer(address(this), fee);
         } else {
             IERC20(position.stakeToken).safeTransfer(msg.sender, position.stakeAmount);
             IERC20(position.rewardToken).safeTransfer(msg.sender, rewardAmountAfterFee);
-            IERC20(position.stakeToken).safeTransfer(address(this), fee);
         }
 
         numberOfStakersByTokenAddress[position.stakeToken] -= 1;

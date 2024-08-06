@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {NexStaging} from "../../contracts/NexStaging.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {CalculationHelper} from "../../contracts/libraries/CalculationHelper.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract NexStagingTest is Test {
     NexStaging public nexStaging;
@@ -45,7 +46,6 @@ contract NexStagingTest is Test {
     );
     event RewardWithdrawn(uint256 indexed positionId, address indexed user, uint256 amount, uint256 timestamp);
 
-    /// @notice Sets up the testing environment
     function setUp() public {
         // Initialize mock tokens
         nexLabsToken = new MockERC20("NexLabs", "NXL");
@@ -65,7 +65,22 @@ contract NexStagingTest is Test {
         feePercent = 3;
 
         vm.startBroadcast();
-        nexStaging = new NexStaging(address(nexLabsToken), tokenAddresses, tokenAPYs, feePercent);
+
+        // Deploy the logic contract
+        NexStaging nexStagingImplementation = new NexStaging();
+
+        // Deploy the proxy and initialize the implementation
+        bytes memory data = abi.encodeWithSignature(
+            "initialize(address,address[],uint256[],uint256)",
+            address(nexLabsToken),
+            tokenAddresses,
+            tokenAPYs,
+            feePercent
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(nexStagingImplementation), data);
+
+        nexStaging = NexStaging(address(proxy));
+
         vm.stopBroadcast();
 
         mintAndApproveTokens(user);

@@ -4,13 +4,16 @@ pragma solidity ^0.8.26;
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {CalculationHelper} from "./libraries/CalculationHelper.sol";
 
-contract NexStaging {
+contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
-    address public owner;
+    // address public owner;
 
     // ERC20 token used for rewards
     IERC20 public nexLabs;
@@ -18,7 +21,7 @@ contract NexStaging {
     uint256 public feePercent;
 
     // Counter for generating unique position IDs
-    uint176 private _nextId = 1;
+    uint176 private _nextId;
 
     /// @notice Struct to hold staking position details
     struct StakePositions {
@@ -90,20 +93,20 @@ contract NexStaging {
     /// @param timestamp Timestamp when the reward withdrawal occurred
     event RewardWithdrawn(uint256 indexed positionId, address indexed user, uint256 amount, uint256 timestamp);
 
-    /// @param _nexLabsAddress Address of the NexLabs token contract
-    /// @param _tokenAddresses Array of token addresses supported for staking
-    /// @param _tokenAPYs Array of APYs corresponding to the token addresses
-    /// @param _feePercent Fee percentage for staking operations
-    constructor(
+    function initialize(
         address _nexLabsAddress,
         address[] memory _tokenAddresses,
         uint256[] memory _tokenAPYs,
         uint256 _feePercent
-    ) {
+    ) public initializer {
         require(_tokenAddresses.length == _tokenAPYs.length, "Mismatched token and APY lengths");
-        owner = msg.sender;
+
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
+
         nexLabs = IERC20(_nexLabsAddress);
         feePercent = _feePercent;
+        _nextId = 1;
 
         for (uint256 i = 0; i < _tokenAddresses.length; i++) {
             tokensAPY[_tokenAddresses[i]] = _tokenAPYs[i];
@@ -262,4 +265,6 @@ contract NexStaging {
 
         emit RewardWithdrawn(positionId, msg.sender, rewardAmount, block.timestamp);
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

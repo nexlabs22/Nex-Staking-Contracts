@@ -13,8 +13,6 @@ import {CalculationHelper} from "./libraries/CalculationHelper.sol";
 contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
-    // address public owner;
-
     // ERC20 token used for rewards
     IERC20 public nexLabs;
     // Fee percentage for staking operations

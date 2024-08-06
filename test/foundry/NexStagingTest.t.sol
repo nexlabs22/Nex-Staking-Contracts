@@ -2,10 +2,14 @@
 pragma solidity ^0.8.26;
 
 import {Test, console} from "forge-std/Test.sol";
-import {NexStaging} from "../../contracts/NexStaging.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
-import {CalculationHelper} from "../../contracts/libraries/CalculationHelper.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+
+import {NexStaging} from "../../contracts/NexStaging.sol";
+import {CalculationHelper} from "../../contracts/libraries/CalculationHelper.sol";
+import {MockERC20} from "./mocks/MockERC20.sol";
+import {DeployNexStaging} from "../../script/DeployNexStaging.s.sol";
 
 contract NexStagingTest is Test {
     NexStaging public nexStaging;

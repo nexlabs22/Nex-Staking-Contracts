@@ -19,16 +19,16 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     uint256 public feePercent;
 
     // Counter for generating unique position IDs
-    uint176 private _nextId;
+    uint256 private _nextId;
 
     /// @notice Struct to hold staking position details
-    struct StakePositions {
+    struct StakePosition {
         address owner; // Owner of the stake
         address stakeToken; // Token being staked
         address rewardToken; // Token given as reward
         uint256 stakeAmount; // Amount of tokens staked
         uint256 rewardEarned; // Amount of rewards earned
-        uint256 apy; // Annual Percentage Yield
+        uint256 apy; // Annual Percentage Yield // @audit should decrease the type number from 256
         uint256 startTime; // Start time of the staking
         bool autoCompound; // Whether rewards are auto-compounded
     }
@@ -38,7 +38,7 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     // Mapping to track number of stakers per token
     mapping(address => uint256) public numberOfStakersByTokenAddress;
     // Mapping to store staking positions by ID
-    mapping(uint256 => StakePositions) private _positions;
+    mapping(uint256 => StakePosition) private _positions;
 
     /// @notice Event emitted when tokens are staked
     /// @param positionId ID of the staking position
@@ -135,7 +135,7 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             bool autoCompound
         )
     {
-        StakePositions memory position = _positions[positionId];
+        StakePosition memory position = _positions[positionId];
         return (
             position.owner,
             position.stakeToken,
@@ -173,7 +173,7 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         positionId = _nextId++;
 
         // Create a new staking position
-        _positions[positionId] = StakePositions({
+        _positions[positionId] = StakePosition({
             owner: msg.sender,
             stakeToken: tokenAddress,
             rewardToken: rewardToken,
@@ -193,9 +193,10 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @param positionId ID of the staking position
     /// @param amount Amount of tokens to be added to the stake
     function increaseStakeAmount(uint256 positionId, uint256 amount) external {
-        StakePositions storage position = _positions[positionId];
+        StakePosition storage position = _positions[positionId];
         require(position.owner == msg.sender, "Only owner can increase the staked amount!");
         require(amount > 0, "Increase amount must be greater than zero.");
+        uint256 apy = tokensAPY[position.stakeToken];
 
         (uint256 fee, uint256 amountAfterFee) = CalculationHelper.calculateAmountAfterFeeAndFee(amount, feePercent);
 
@@ -205,7 +206,7 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         token.safeTransferFrom(msg.sender, address(this), fee);
 
         // Calculate and update the reward
-        uint256 reward = CalculationHelper.calculateReward(position);
+        uint256 reward = CalculationHelper.calculateReward(position, apy);
         position.stakeAmount += amountAfterFee;
         position.rewardEarned += reward;
         position.startTime = block.timestamp;
@@ -216,12 +217,13 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Function to unstake tokens
     /// @param positionId ID of the staking position
     function unStake(uint256 positionId) external {
-        StakePositions storage position = _positions[positionId];
+        StakePosition storage position = _positions[positionId];
         require(position.owner == msg.sender, "You are not the owner of this position!");
         require(position.stakeAmount > 0, "No stake amount to unstake.");
+        uint256 apy = tokensAPY[position.stakeToken];
 
         // Calculate the total reward amount
-        uint256 rewardAmount = position.rewardEarned + CalculationHelper.calculateReward(position);
+        uint256 rewardAmount = position.rewardEarned + CalculationHelper.calculateReward(position, apy);
 
         (, uint256 rewardAmountAfterFee) = CalculationHelper.calculateAmountAfterFeeAndFee(rewardAmount, feePercent);
 
@@ -247,9 +249,10 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Function to withdraw rewards
     /// @param positionId ID of the staking position
     function withdrawReward(uint256 positionId) external {
-        StakePositions storage position = _positions[positionId];
+        StakePosition storage position = _positions[positionId];
         require(position.owner == msg.sender, "You are not the owner of this position");
-        uint256 rewardAmount = position.rewardEarned + CalculationHelper.calculateReward(position);
+        uint256 apy = tokensAPY[position.stakeToken];
+        uint256 rewardAmount = position.rewardEarned + CalculationHelper.calculateReward(position, apy);
 
         // Auto-compound the reward if enabled, otherwise transfer to the user
         if (position.autoCompound) {

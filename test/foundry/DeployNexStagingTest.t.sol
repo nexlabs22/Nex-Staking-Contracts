@@ -2,11 +2,12 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {DeployNexStaging} from "../../script/DeployNexStaging.s.sol";
-import {NexStaging} from "../../contracts/NexStaging.sol";
-import {MockERC20} from "../../test/foundry/mocks/MockERC20.sol";
 import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+
+import {MockERC20} from "../../test/foundry/mocks/MockERC20.sol";
+import {DeployNexStaging} from "../../script/DeployNexStaging.s.sol";
+import {NexStaging} from "../../contracts/NexStaging.sol";
 
 contract DeployNexStagingTest is Test {
     DeployNexStaging deployNexStaging;

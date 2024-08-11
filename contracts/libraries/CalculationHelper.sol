@@ -6,10 +6,10 @@ import {NexStaging} from "../NexStaging.sol";
 library CalculationHelper {
     function calculateReward(NexStaging.StakePosition storage position, uint256 apy) internal view returns (uint256) {
         uint256 duration = block.timestamp - position.startTime;
-        uint256 dailyRate = apy * 1e18 / 10;
+        uint256 dailyRate = apy * 1e18 / 7;
 
-        uint256 interval = 10 days; // Set the interval to 10 days
-        uint256 intervalRate = dailyRate * 10; // Adjust the rate for the interval
+        uint256 interval = 7 days;
+        uint256 intervalRate = dailyRate * 7;
 
         if (position.autoCompound) {
             uint256 compoundedStakeAmount = position.stakeAmount;
@@ -20,7 +20,6 @@ library CalculationHelper {
                 compoundedStakeAmount += interest;
             }
 
-            // Calculate remaining days that don't fit into the full interval
             uint256 remainingDays = (duration % interval) / 1 days;
             uint256 remainingInterest = (compoundedStakeAmount * dailyRate * remainingDays) / 1e20;
             compoundedStakeAmount += remainingInterest;

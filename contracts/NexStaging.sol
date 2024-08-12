@@ -3,8 +3,8 @@ pragma solidity ^0.8.26;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
@@ -99,7 +99,8 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ) public initializer {
         require(_tokenAddresses.length == _tokenAPYs.length, "Mismatched token and APY lengths");
 
-        __Ownable_init(0x51256F5459C1DdE0C794818AF42569030901a098);
+        __Ownable_init(msg.sender);
+        // __Pausable_init();
         __UUPSUpgradeable_init();
 
         nexLabs = IERC20(_nexLabsAddress);
@@ -266,6 +267,14 @@ contract NexStaging is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         emit RewardWithdrawn(positionId, msg.sender, rewardAmount, block.timestamp);
     }
+
+    // function pause() external onlyOwner {
+    //     _pause();
+    // }
+
+    // function unpause() external onlyOwner {
+    //     _unpause();
+    // }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

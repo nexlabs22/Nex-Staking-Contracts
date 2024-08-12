@@ -89,6 +89,11 @@ contract NexStagingV2 is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @param timestamp Timestamp when the reward withdrawal occurred
     event RewardWithdrawn(uint256 indexed positionId, address indexed user, uint256 amount, uint256 timestamp);
 
+    /// @custom:oz-upgrades-from constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize(
         address _nexLabsAddress,
         address[] memory _tokenAddresses,

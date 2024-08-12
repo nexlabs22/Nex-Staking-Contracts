@@ -23,7 +23,7 @@ contract NexStagingTest is Test {
 
     address public user = address(1);
     uint256 public stakeAmount = 1000 * DECIMAL;
-    uint256 public contractInitialBalance = 100000 * DECIMAL;
+    uint256 public contractInitialBalance = 10000000 * DECIMAL;
     uint256 public nexLabsTokenAPY = 15;
     uint256 public indexToken1APY = 10;
     uint256 public indexToken2APY = 20;
@@ -192,8 +192,8 @@ contract NexStagingTest is Test {
         emit Staked(1, user, address(indexToken1), address(nexLabsToken), amountAfterFee, true, block.timestamp);
         nexStaging.stake(address(indexToken1), address(nexLabsToken), stakeAmount, true);
 
-        vm.warp(block.timestamp + 365 days);
-        uint256 expectedReward = compoundInterest(amountAfterFee, indexToken1APY, 365, true);
+        vm.warp(block.timestamp + 200 days);
+        uint256 expectedReward = compoundInterest(amountAfterFee, indexToken1APY, 200, true);
 
         vm.expectEmit(true, true, true, true);
         (, uint256 rewardAmountAfterFee) = calculateAmountAfterFeeAndFee(expectedReward);

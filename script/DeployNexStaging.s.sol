@@ -8,6 +8,9 @@ import {MockERC20} from "../test/foundry/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
+import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
+import {Defender, ApprovalProcessResponse} from "openzeppelin-foundry-upgrades/Defender.sol";
 
 contract DeployNexStaging is Script {
     NexStaging public nexStaging;
@@ -15,6 +18,8 @@ contract DeployNexStaging is Script {
     MockERC20 public indexToken1;
     MockERC20 public indexToken2;
     ProxyAdmin public proxyAdmin;
+
+    function setUp() public {}
 
     function run() external {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
@@ -36,8 +41,6 @@ contract DeployNexStaging is Script {
 
         uint256 feePercent = 3;
 
-        NexStaging nexStagingImplementation = new NexStaging();
-
         bytes memory data = abi.encodeWithSignature(
             "initialize(address,address[],uint256[],uint256)",
             address(nexLabsToken),
@@ -46,19 +49,27 @@ contract DeployNexStaging is Script {
             feePercent
         );
 
-        proxyAdmin = new ProxyAdmin(0x51256F5459C1DdE0C794818AF42569030901a098);
-        TransparentUpgradeableProxy proxy =
-            new TransparentUpgradeableProxy(address(nexStagingImplementation), address(proxyAdmin), data);
+        // ApprovalProcessResponse memory upgradeApprovalProcess = Defender.getUpgradeApprovalProcess();
 
-        nexStaging = NexStaging(address(proxy));
+        // if (upgradeApprovalProcess.via == address(0)) {
+        //     revert(
+        //         string.concat(
+        //             "Upgrade approval process with id ",
+        //             upgradeApprovalProcess.approvalProcessId,
+        //             " has no assigned address"
+        //         )
+        //     );
+        // }
+
+        // Options memory opts;
+        // opts.defender.useDefenderDeploy = true;
+
+        // address proxy = Upgrades.deployUUPSProxy("NexStaging.sol", data, opts);
+        address proxy =
+            Upgrades.deployTransparentProxy("NexStaging.sol", 0x51256F5459C1DdE0C794818AF42569030901a098, data);
 
         vm.stopBroadcast();
 
-        console.log("NexStaging deployed to:", address(nexStaging));
-        console.log("NexStaging Proxy deployed to:", address(proxy));
-        console.log("ProxyAdmin deployed to:", address(proxyAdmin));
-        console.log("NexLabsToken deployed to:", address(nexLabsToken));
-        console.log("IndexToken1 deployed to:", address(indexToken1));
-        console.log("IndexToken2 deployed to:", address(indexToken2));
+        console.log("Deployed proxy to address", proxy);
     }
 }

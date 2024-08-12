@@ -6,7 +6,7 @@ import {NexStaging} from "../NexStaging.sol";
 library CalculationHelper {
     function calculateReward(NexStaging.StakePosition storage position, uint256 apy) internal view returns (uint256) {
         uint256 duration = block.timestamp - position.startTime;
-        uint256 dailyRate = apy * 1e18 / 7;
+        uint256 dailyRate = apy * 1e18 / 365;
 
         uint256 interval = 7 days;
         uint256 intervalRate = dailyRate * 7;

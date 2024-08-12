@@ -192,8 +192,10 @@ contract NexStagingTest is Test {
         emit Staked(1, user, address(indexToken1), address(nexLabsToken), amountAfterFee, true, block.timestamp);
         nexStaging.stake(address(indexToken1), address(nexLabsToken), stakeAmount, true);
 
-        vm.warp(block.timestamp + 200 days);
-        uint256 expectedReward = compoundInterest(amountAfterFee, indexToken1APY, 200, true);
+        vm.warp(block.timestamp + 365 days);
+        uint256 expectedReward = compoundInterest(amountAfterFee, indexToken1APY, 365, true);
+
+        console.log("Expected Reward:", expectedReward);
 
         vm.expectEmit(true, true, true, true);
         (, uint256 rewardAmountAfterFee) = calculateAmountAfterFeeAndFee(expectedReward);
@@ -542,7 +544,7 @@ contract NexStagingTest is Test {
         returns (uint256)
     {
         uint256 originalPrincipal = principal;
-        uint256 dailyRate = rate * 1e18 / 7;
+        uint256 dailyRate = rate * 1e18 / 365;
         uint256 intervalRate = dailyRate * 7;
 
         if (autoCompound) {

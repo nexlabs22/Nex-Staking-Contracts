@@ -19,8 +19,8 @@ contract NexStaging is OwnableUpgradeable {
     struct Pools {
         address vault;
         uint256 totalStaked;
-        uint256 weight;
     }
+    // uint256 weight;
 
     struct StakePositions {
         address owner;
@@ -30,6 +30,7 @@ contract NexStaging is OwnableUpgradeable {
         uint256 startTime;
     }
 
+    // mapping(uint256 => Pools) public pools;
     mapping(address => Pools) public pools;
     mapping(uint256 => StakePositions) private _positions;
 
@@ -48,9 +49,10 @@ contract NexStaging is OwnableUpgradeable {
         feePercent = _feePercent;
         _nextId = 1;
 
-        // for (uint256 i = 0; i < _tokenAddress.length; i++) {
-        //     ERC4626 token = new ERC4626(IERC20(_tokenAddress[i]));
-        // }
+        for (uint256 i = 0; i < _tokenAddress.length; i++) {
+            poolTokens.push(_tokenAddress[i]);
+            pools[_tokenAddress[i]] = Pools({vault: _tokenAddress[i], totalStaked: 0});
+        }
     }
 
     function positions(uint256 positionId)
@@ -62,7 +64,61 @@ contract NexStaging is OwnableUpgradeable {
         return (position.owner, position.vault, position.stakeAmount, position.shares, position.startTime);
     }
 
-    function stake(address tokenAddress, uint256 amount) external returns (uint256 positionId) {}
+    function stake(address tokenAddress, uint256 amount) external returns (uint256 positionId) {
+        require(tokenAddress != address(0), "Token not supported for staking.");
+        require(amount > 0, "Staking amount must be greater than zero.");
 
-    function unstake(uint256 positionId, address rewardToken) external {}
+        (uint256 fee, uint256 amountAfterFee) = CalculationHelper.calculateAmountAfterFeeAndFee(amount, feePercent);
+
+        IERC20 token = IERC20(tokenAddress);
+        token.safeTransferFrom(msg.sender, address(this), amountAfterFee);
+        token.safeTransferFrom(msg.sender, address(this), fee); // should transfer to the owner
+
+        positionId = _nextId++;
+
+        _positions[positionId] = StakePositions({
+            owner: msg.sender,
+            vault: tokenAddress,
+            stakeAmount: amountAfterFee,
+            shares: 0, // @audit
+            startTime: block.timestamp
+        });
+
+        // Update the total staked in the corresponding pool
+        pools[tokenAddress].totalStaked += amountAfterFee;
+    }
+
+    function unstake(uint256 positionId, address rewardToken) external {
+        StakePositions storage position = _positions[positionId];
+        require(position.owner == msg.sender, "You are not the owner of this position.");
+        require(position.stakeAmount > 0, "No stake amount to unstake.");
+
+        // (uint256 fee,uint256 rewardAmountAfterFee) = CalculationHelper.calculateAmountAfterFeeAndFee();
+
+        if (position.vault == rewardToken) {
+            // IERC20(position.vault).safeTransfer(msg.sender, rewardAmountAfterFee);
+        }
+
+        // emit UnStaked(
+        //     positionId, msg.sender, position.stakeToken, position.stakeAmount, rewardAmountAfterFee, block.timestamp
+        // );
+
+        // Delete the position after unstaking
+        delete _positions[positionId];
+    }
+
+    function calculateWeightOfPools() external view returns (uint256[] memory) {
+        uint256 totalStakedAcrossAllPools = 0;
+        uint256[] memory weights = new uint256[](poolTokens.length);
+
+        for (uint256 i = 0; i < poolTokens.length; i++) {
+            totalStakedAcrossAllPools += pools[poolTokens[i]].totalStaked;
+        }
+
+        for (uint256 i = 0; i < poolTokens.length; i++) {
+            weights[i] = (pools[poolTokens[i]].totalStaked * 1e18) / totalStakedAcrossAllPools;
+        }
+
+        return weights;
+    }
 }

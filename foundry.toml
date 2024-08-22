@@ -12,4 +12,4 @@ libs = ['node_modules', 'lib']
 test = 'test'
 cache_path  = 'cache_forge'
 
-remmaings=["@openzeppelin/contract/=lib/openzeppelin-contracts", "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable", "openzeppelin-foundry-upgrades/=lib/openzeppelin-foundry-upgrades/contracts"]
+remmaings=["@openzeppelin/contract/=lib/openzeppelin-contracts", "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable", "openzeppelin-foundry-upgrades/=lib/openzeppelin-foundry-upgrades/contracts", "@uniswap/v3-periphery/=lib/v3-periphery"]

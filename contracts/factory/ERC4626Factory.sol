@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ERC20} from "@openzeppelin/contracts/interfaces/ERC20.sol";
-import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {ERC4626Vault} from "./ERC4626Vault.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract ERC4626Factory is ERC4626 {
-    constructor(ERC20 asset, string memory _name, string memory _symbol) ERC4626(asset) {}
+contract ERC4626Factory {
+    event VaultCreated(address indexed vault, address indexed underlyingAsset);
+
+    function createERC4626Vault(address _underlyingAsset) external returns (address) {
+        ERC4626Vault vault = new ERC4626Vault(IERC20(_underlyingAsset));
+        emit VaultCreated(address(vault), _underlyingAsset);
+        return address(vault);
+    }
 }

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+// import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
@@ -19,6 +21,8 @@ contract RewardManager {
     // address private nexStaging;
     address[] private rewardTokensAddresses;
 
+    event TrasferTokens(uint256 indexed amount, uint256 indexed timestamp);
+
     constructor(
         address _nexStagingAddress,
         address _targetTokenAddress,
@@ -27,7 +31,6 @@ contract RewardManager {
         uint256 _threshold
     ) {
         nexStaging = NexStaging(_nexStagingAddress);
-        // nexStaging = _nexStagingAddress;
         targetToken = IERC20(_targetTokenAddress);
         threshold = _threshold * 10 ** 18;
         uniswapRouter = ISwapRouter(_uniswapRouter);
@@ -63,10 +66,11 @@ contract RewardManager {
     }
 
     function checkAndTransfer() public {
-        // address[] memory tokens = rewardTokensAddresses;
         swapTokensForTargetToken(rewardTokensAddresses, 100);
         uint256 balance = targetToken.balanceOf(address(this));
         require(balance >= threshold, "Balance is below the threshold");
         targetToken.safeTransfer(address(nexStaging), balance);
+
+        emit TrasferTokens(balance, block.timestamp);
     }
 }

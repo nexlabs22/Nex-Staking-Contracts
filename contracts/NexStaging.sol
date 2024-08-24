@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 
+import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
 import {CalculationHelper} from "./libraries/CalculationHelper.sol";
 
 contract NexStaging is OwnableUpgradeable {
     using SafeERC20 for IERC20;
 
+    ERC4626Factory erc4626Factory;
     IERC20 public nexLabsToken;
     address[] public poolTokens;
     uint256 public feePercent;
@@ -20,48 +22,72 @@ contract NexStaging is OwnableUpgradeable {
         address vault;
         uint256 totalStaked;
     }
-    // uint256 weight;
 
     struct StakePositions {
         address owner;
+        address stakeToken;
         address vault;
         uint256 stakeAmount;
         uint256 shares;
         uint256 startTime;
     }
 
-    // mapping(uint256 => Pools) public pools;
     mapping(address => Pools) public pools;
     mapping(uint256 => StakePositions) private _positions;
+    mapping(address => uint256) public numberOfStakersByTokenAddress;
 
     event Staked(
-        uint256 indexed positionId, address indexed user, address indexed pool, uint256 amount, uint256 timestamp
-    );
-    event StakeIncreased(
-        uint256 indexed positionId, address indexed user, address indexed vault, uint256 amount, uint256 timestamp
+        uint256 indexed positionId,
+        address indexed user,
+        address indexed tokenAddress,
+        address vault,
+        uint256 amount,
+        uint256 timestamp
     );
     event UnStaked(
-        uint256 indexed positionId, address indexed user, address indexed vault, uint256 amount, uint256 timestamp
+        uint256 indexed positionId,
+        address indexed user,
+        address indexed tokenAddress,
+        address vault,
+        uint256 amount,
+        uint256 timestamp
     );
 
-    constructor(address _nexLabsAddress, address[] memory _tokenAddress, uint256 _feePercent) {
+    constructor(address _nexLabsAddress, address[] memory _tokenAddress, uint256 _feePercent, address _erc4626Factory) {
+        erc4626Factory = ERC4626Factory(_erc4626Factory);
         nexLabsToken = IERC20(_nexLabsAddress);
         feePercent = _feePercent;
         _nextId = 1;
 
         for (uint256 i = 0; i < _tokenAddress.length; i++) {
             poolTokens.push(_tokenAddress[i]);
-            pools[_tokenAddress[i]] = Pools({vault: _tokenAddress[i], totalStaked: 0});
+
+            address vault = erc4626Factory.createERC4626Vault(_tokenAddress[i]);
+            pools[_tokenAddress[i]] = Pools({vault: vault, totalStaked: 0});
         }
     }
 
     function positions(uint256 positionId)
         external
         view
-        returns (address positionOwner, address stakeToken, uint256 stakeAmount, uint256 shares, uint256 startTime)
+        returns (
+            address positionOwner,
+            address stakeToken,
+            address vault,
+            uint256 stakeAmount,
+            uint256 shares,
+            uint256 startTime
+        )
     {
         StakePositions memory position = _positions[positionId];
-        return (position.owner, position.vault, position.stakeAmount, position.shares, position.startTime);
+        return (
+            position.owner,
+            position.stakeToken,
+            position.vault,
+            position.stakeAmount,
+            position.shares,
+            position.startTime
+        );
     }
 
     function stake(address tokenAddress, uint256 amount) external returns (uint256 positionId) {
@@ -78,7 +104,8 @@ contract NexStaging is OwnableUpgradeable {
 
         _positions[positionId] = StakePositions({
             owner: msg.sender,
-            vault: tokenAddress,
+            stakeToken: tokenAddress,
+            vault: pools[tokenAddress].vault, // should set the vault address
             stakeAmount: amountAfterFee,
             shares: 0, // @audit
             startTime: block.timestamp
@@ -86,6 +113,9 @@ contract NexStaging is OwnableUpgradeable {
 
         // Update the total staked in the corresponding pool
         pools[tokenAddress].totalStaked += amountAfterFee;
+        numberOfStakersByTokenAddress[tokenAddress] += 1;
+
+        emit Staked(positionId, msg.sender, tokenAddress, pools[tokenAddress].vault, amountAfterFee, block.timestamp);
     }
 
     function unstake(uint256 positionId, address rewardToken) external {
@@ -93,15 +123,16 @@ contract NexStaging is OwnableUpgradeable {
         require(position.owner == msg.sender, "You are not the owner of this position.");
         require(position.stakeAmount > 0, "No stake amount to unstake.");
 
-        // (uint256 fee,uint256 rewardAmountAfterFee) = CalculationHelper.calculateAmountAfterFeeAndFee();
+        (uint256 fee, uint256 rewardAmountAfterFee) =
+            CalculationHelper.calculateAmountAfterFeeAndFee(position.stakeAmount);
 
         if (position.vault == rewardToken) {
             // IERC20(position.vault).safeTransfer(msg.sender, rewardAmountAfterFee);
         }
 
-        // emit UnStaked(
-        //     positionId, msg.sender, position.stakeToken, position.stakeAmount, rewardAmountAfterFee, block.timestamp
-        // );
+        emit UnStaked(
+            positionId, msg.sender, position.stakeToken, position.vault, position.stakeAmount, block.timestamp
+        );
 
         // Delete the position after unstaking
         delete _positions[positionId];

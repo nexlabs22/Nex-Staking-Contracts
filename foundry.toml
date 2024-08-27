@@ -18,4 +18,5 @@ remappings = [
     "@openzeppelin-foundry-upgrades/=lib/openzeppelin-foundry-upgrades/contracts/",
     "@uniswap/v3-periphery/=lib/v3-periphery/",
     "@uniswap/v3-core/=lib/v3-core/",
+    "@solmate/=lib/solmate",
 ]

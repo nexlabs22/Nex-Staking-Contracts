@@ -8,34 +8,45 @@ import {NexStaging} from "../NexStaging.sol";
 
 library SwapHelpers {
     function swapTokensForPoolIndexToken(
-        NexStaging nexStaging,
         ISwapRouter uniswapRouter,
-        address[] memory tokens,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
         uint24 fee
-    ) internal {
-        for (uint256 i = 0; i < tokens.length; i++) {
-            NexStaging.Pools storage pool = NexStaging.pools[tokens[i]];
-            uint256 tokenBalance = IERC20(tokens[i]).balanceOf(address(this));
+    ) internal returns (uint256) {
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
+            fee: fee,
+            recipient: address(this),
+            deadline: block.timestamp + 300,
+            amountIn: amountIn,
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
 
-            if (tokenBalance > 0) {
-                IERC20(tokens[i]).approve(address(uniswapRouter), tokenBalance);
-
-                ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-                    tokenIn: tokens[i],
-                    tokenOut: address(pool.indexToken),
-                    fee: fee,
-                    recipient: address(this),
-                    deadline: block.timestamp + 300,
-                    amountIn: tokenBalance,
-                    amountOutMinimum: 0,
-                    sqrtPriceLimitX96: 0
-                });
-
-                uniswapRouter.exactInputSingle(params);
-                pool.totalStaked += IERC20(pool.indexToken).balanceOf(address(this));
-            }
-        }
+        uint256 amountOut = uniswapRouter.exactInputSingle(params);
+        return amountOut;
     }
+
+    // function swapTokensForPoolIndexToken(ISwapRouter uniswapRouter, uint256 ethAmount, address tokenOut, uint24 fee)
+    //     internal
+    //     returns (uint256)
+    // {
+    //     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+    //         tokenIn: address(0), // Use WETH instead of ETH
+    //         tokenOut: tokenOut,
+    //         fee: fee,
+    //         recipient: address(this),
+    //         deadline: block.timestamp + 300,
+    //         amountIn: ethAmount,
+    //         amountOutMinimum: 0,
+    //         sqrtPriceLimitX96: 0
+    //     });
+
+    //     uint256 amountOut = uniswapRouter.exactInputSingle{value: ethAmount}(params);
+    //     return amountOut;
+    // }
 
     function swapIndexTokensForRewardToken(ISwapRouter uniswapRouter, address tokenIn, address tokenOut, uint256 amount)
         internal
@@ -52,7 +63,7 @@ library SwapHelpers {
             sqrtPriceLimitX96: 0
         });
 
-        (uint256 amountOut) = uniswapRouter.exactInputSingle(params);
+        uint256 amountOut = uniswapRouter.exactInputSingle(params);
         return amountOut;
     }
 

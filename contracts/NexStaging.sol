@@ -11,6 +11,7 @@ import {IQuoterV2} from "@uniswap/v3-periphery/contracts/interfaces/IQuoterV2.so
 import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
 import {CalculationHelper} from "./libraries/CalculationHelper.sol";
 import {SwapHelpers} from "./libraries/SwapHelpers.sol";
+import {IWETH9} from "./interfaces/IWETH9.sol";
 
 contract NexStaging is OwnableUpgradeable {
     using SafeERC20 for IERC20;
@@ -19,6 +20,7 @@ contract NexStaging is OwnableUpgradeable {
     ISwapRouter public uniswapRouter;
     IQuoterV2 public qouterV2;
 
+    IWETH9 public weth;
     IERC20 public nexLabsToken;
     address[] public poolTokens;
     uint256 public feePercent;
@@ -28,6 +30,7 @@ contract NexStaging is OwnableUpgradeable {
         address vault;
         IERC20 indexToken;
         uint256 totalStaked;
+        uint256 totalSupply;
     }
 
     struct StakePositions {
@@ -64,6 +67,8 @@ contract NexStaging is OwnableUpgradeable {
         uint256 timestamp
     );
 
+    event RewardsDistributed(address indexed tokenAddress, uint256 amount, uint256 timestamp);
+
     function initialize(
         address _nexLabsAddress,
         address[] memory _tokenAddresses,
@@ -83,24 +88,11 @@ contract NexStaging is OwnableUpgradeable {
         _nextId = 1;
 
         for (uint256 i = 0; i < _tokenAddresses.length; i++) {
-            address vault = erc4626Factory.createERC4626Vault(_tokenAddresses[i], "Vault Token", "vTOKEN");
-            pools[_tokenAddresses[i]] = Pools({vault: vault, indexToken: IERC20(_indexTokens[i]), totalStaked: 0});
+            address vault = erc4626Factory.createERC4626Vault(_tokenAddresses[i]);
+            pools[_tokenAddresses[i]] =
+                Pools({vault: vault, indexToken: IERC20(_tokenAddresses[i]), totalStaked: 0, totalSupply: 0});
         }
     }
-
-    // constructor(address _nexLabsAddress, address[] memory _tokenAddress, uint256 _feePercent, address _erc4626Factory) {
-    //     erc4626Factory = ERC4626Factory(_erc4626Factory);
-    //     nexLabsToken = IERC20(_nexLabsAddress);
-    //     feePercent = _feePercent;
-    //     _nextId = 1;
-
-    //     for (uint256 i = 0; i < _tokenAddress.length; i++) {
-    //         poolTokens.push(_tokenAddress[i]);
-
-    //         address vault = erc4626Factory.createERC4626Vault(_tokenAddress[i]);
-    //         pools[_tokenAddress[i]] = Pools({vault: vault, totalStaked: 0});
-    //     }
-    // }
 
     function positions(uint256 positionId)
         external
@@ -136,7 +128,7 @@ contract NexStaging is OwnableUpgradeable {
 
         IERC20 token = IERC20(tokenAddress);
         token.safeTransferFrom(msg.sender, address(this), amountAfterFee);
-        token.safeTransferFrom(msg.sender, owner(), fee); // should transfer to the owner
+        token.safeTransferFrom(msg.sender, owner(), fee); // Transfer fee to the owner
 
         ERC4626(pool.vault).mint(amountAfterFee, msg.sender);
 
@@ -147,13 +139,12 @@ contract NexStaging is OwnableUpgradeable {
         _positions[positionId] = StakePositions({
             owner: msg.sender,
             stakeToken: tokenAddress,
-            vault: pools[tokenAddress].vault, // should set the vault address
+            vault: pools[tokenAddress].vault,
             stakeAmount: amountAfterFee,
-            shares: shares, // @audit
+            shares: shares,
             startTime: block.timestamp
         });
 
-        // pools[tokenAddress].totalStaked += amountAfterFee;
         shareHolder[msg.sender] += shares;
         pool.totalStaked += amountAfterFee;
         numberOfStakersByTokenAddress[tokenAddress] += 1;
@@ -167,7 +158,6 @@ contract NexStaging is OwnableUpgradeable {
         require(position.stakeAmount > 0, "No stake amount to unstake.");
 
         Pools storage pool = pools[position.stakeToken];
-        // uint256 rewardAmount = calculateReward(position.stakeAmount, pool.indexToken);
 
         (uint256 fee, uint256 rewardAmountAfterFee) =
             CalculationHelper.calculateAmountAfterFeeAndFee(position.stakeAmount, feePercent);
@@ -177,8 +167,9 @@ contract NexStaging is OwnableUpgradeable {
             IERC20(pool.indexToken).safeTransfer(msg.sender, rewardAmountAfterFee);
             IERC20(pool.indexToken).safeTransfer(owner(), fee);
         } else {
-            (uint256 amountOut) =
-                SwapHelpers.swapIndexTokensForRewardToken(position.stakeToken, rewardToken, position.stakeAmount);
+            uint256 amountOut = SwapHelpers.swapIndexTokensForRewardToken(
+                uniswapRouter, position.stakeToken, rewardToken, position.stakeAmount
+            );
             (uint256 feeAmount, uint256 amountAfterFee) =
                 CalculationHelper.calculateAmountAfterFeeAndFee(amountOut, feePercent);
             IERC20(rewardToken).safeTransfer(msg.sender, amountAfterFee);
@@ -198,61 +189,24 @@ contract NexStaging is OwnableUpgradeable {
         pool.totalStaked -= position.stakeAmount;
         shareHolder[msg.sender] -= position.shares;
 
-        // delete shareHolder[msg.sender];
         delete _positions[positionId];
     }
 
-    // function swapTokensForPoolIndexToken(address[] memory tokens, uint24 fee) internal {
-    //     for (uint256 i = 0; i < tokens.length; i++) {
-    //         Pools storage pool = pools[tokens[i]];
-    //         uint256 tokenBalance = IERC20(tokens[i]).balanceOf(address(this));
+    function distributeRewards(address[] memory tokens) internal {
+        uint256[] memory poolWeights = calculateWeightOfPools();
 
-    //         if (tokenBalance > 0) {
-    //             IERC20(tokens[i]).approve(address(uniswapRouter), tokenBalance);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            Pools storage pool = pools[tokens[i]];
+            // uint256 ethAmountForPool = address(this).balance * poolWeights[i] / 1e18;
+            uint256 wethAmountForPool = weth.balanceOf(address(this)) * poolWeights[i];
+            uint256 convertedAmount = SwapHelpers.swapTokensForPoolIndexToken(
+                uniswapRouter, address(weth), address(pool.indexToken), wethAmountForPool, 3000
+            );
 
-    //             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-    //                 tokenIn: tokens[i],
-    //                 tokenOut: address(pool.indexToken),
-    //                 fee: fee,
-    //                 recipient: address(this),
-    //                 deadline: block.timestamp + 300,
-    //                 amountIn: tokenBalance,
-    //                 amountOutMinimum: 0,
-    //                 sqrtPriceLimitX96: 0
-    //             });
-
-    //             uniswapRouter.exactInputSingle(params);
-    //             pool.totalStaked += IERC20(pool.indexToken).balanceOf(address(this));
-    //         }
-    //     }
-    // }
-
-    // function swapIndexTokensForRewardToken(address tokenIn, address tokenOut, uint256 amount)
-    //     internal
-    //     returns (uint256)
-    // {
-    //     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-    //         tokenIn: tokenIn,
-    //         tokenOut: tokenOut,
-    //         fee: 3000,
-    //         recipient: address(this),
-    //         deadline: block.timestamp + 300,
-    //         amountIn: amount,
-    //         amountOutMinimum: 0,
-    //         sqrtPriceLimitX96: 0
-    //     });
-
-    //     (uint256 amountOut) = uniswapRouter.exactInputSingle(params);
-    //     return amountOut;
-    // }
-
-    function receiveAndProcessRewards(address[] memory tokens) internal {
-        SwapHelpers.swapTokensForPoolIndexToken(this, uniswapRouter, tokens, 3000);
+            pool.totalStaked += convertedAmount;
+            emit RewardsDistributed(tokens[i], convertedAmount, block.timestamp);
+        }
     }
-
-    // function calculateReward(uint256 amount, IERC20 indexToken) internal view returns (uint256) {
-    //     return amount;
-    // }
 
     function calculateWeightOfPools() internal view returns (uint256[] memory) {
         uint256 totalStakedAcrossAllPools = 0;
@@ -269,6 +223,14 @@ contract NexStaging is OwnableUpgradeable {
         return weights;
     }
 
+    receive() external payable {
+        distributeRewards(poolTokens);
+    }
+
+    fallback() external payable {
+        distributeRewards(poolTokens);
+    }
+
     function qouter(address tokenIn, address tokenOut, uint256 amount, uint24 fee)
         external
         returns (uint256 amountOut)
@@ -282,13 +244,5 @@ contract NexStaging is OwnableUpgradeable {
         });
         (amountOut,,,) = qouterV2.quoteExactInputSingle(params);
         return amountOut;
-    }
-
-    receive() external payable {
-        receiveAndProcessRewards(poolTokens);
-    }
-
-    fallback() external payable {
-        receiveAndProcessRewards(poolTokens);
     }
 }

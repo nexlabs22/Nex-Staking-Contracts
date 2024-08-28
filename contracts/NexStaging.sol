@@ -153,6 +153,7 @@ contract NexStaging is OwnableUpgradeable {
         });
 
         // pools[tokenAddress].totalStaked += amountAfterFee;
+        shareHolder[msg.sender] += shares;
         pool.totalStaked += amountAfterFee;
         numberOfStakersByTokenAddress[tokenAddress] += 1;
 
@@ -175,18 +176,7 @@ contract NexStaging is OwnableUpgradeable {
             IERC20(pool.indexToken).safeTransfer(msg.sender, rewardAmountAfterFee);
             IERC20(pool.indexToken).safeTransfer(owner(), fee);
         } else {
-            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-                tokenIn: position.stakeToken,
-                tokenOut: rewardToken,
-                fee: 3000,
-                recipient: address(this),
-                deadline: block.timestamp + 300,
-                amountIn: rewardAmountAfterFee,
-                amountOutMinimum: 0,
-                sqrtPriceLimitX96: 0
-            });
-
-            (uint256 amountOut) = uniswapRouter.exactInputSingle(params);
+            (uint256 amountOut) = swapIndexTokensForRewardToken(position.stakeToken, rewardToken, position.stakeAmount);
             (uint256 feeAmount, uint256 amountAfterFee) =
                 CalculationHelper.calculateAmountAfterFeeAndFee(amountOut, feePercent);
             IERC20(rewardToken).safeTransfer(msg.sender, amountAfterFee);
@@ -204,6 +194,7 @@ contract NexStaging is OwnableUpgradeable {
         );
 
         pool.totalStaked -= position.stakeAmount;
+        delete shareHolder[msg.sender];
         delete _positions[positionId];
     }
 
@@ -230,6 +221,25 @@ contract NexStaging is OwnableUpgradeable {
                 pool.totalStaked += IERC20(pool.indexToken).balanceOf(address(this));
             }
         }
+    }
+
+    function swapIndexTokensForRewardToken(address tokenIn, address tokenOut, uint256 amount)
+        internal
+        returns (uint256)
+    {
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
+            fee: 3000,
+            recipient: address(this),
+            deadline: block.timestamp + 300,
+            amountIn: amount,
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
+
+        (uint256 amountOut) = uniswapRouter.exactInputSingle(params);
+        return amountOut;
     }
 
     function receiveAndProcessRewards(address[] memory tokens) internal {
@@ -267,6 +277,7 @@ contract NexStaging is OwnableUpgradeable {
             sqrtPriceLimitX96: 0 // @audit
         });
         (amountOut,,,) = qouterV2.quoteExactInputSingle(params);
+        return amountOut;
     }
 
     receive() external payable {

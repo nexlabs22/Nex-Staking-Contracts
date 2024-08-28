@@ -7,6 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 import {NexStaging} from "./NexStaging.sol";
+import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 
 contract RewardManager {
@@ -20,10 +21,10 @@ contract RewardManager {
     uint256 private threshold;
     address[] private rewardTokensAddresses;
 
-    enum RouterVersion {
-        ROUTER_V3,
-        ROUTER_V2
-    }
+    // enum RouterVersion {
+    //     ROUTER_V3,
+    //     ROUTER_V2
+    // }
 
     event TransferTokens(uint256 indexed amount, uint256 indexed timestamp);
 
@@ -47,43 +48,39 @@ contract RewardManager {
         }
     }
 
-    function swapTokensForTargetToken(address[] memory tokens, uint24 fee) internal {
-        for (uint256 i = 0; i < tokens.length; i++) {
-            IERC20 token = IERC20(tokens[i]);
-            uint256 tokenBalance = token.balanceOf(address(this));
+    // function swapTokensForTargetToken(address[] memory tokens, uint24 fee) internal {
+    //     for (uint256 i = 0; i < tokens.length; i++) {
+    //         IERC20 token = IERC20(tokens[i]);
+    //         uint256 tokenBalance = token.balanceOf(address(this));
 
-            if (tokenBalance > 0) {
-                token.approve(address(uniswapRouter), tokenBalance);
+    //         if (tokenBalance > 0) {
+    //             token.approve(address(uniswapRouter), tokenBalance);
 
-                ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-                    tokenIn: tokens[i],
-                    tokenOut: address(weth),
-                    fee: fee,
-                    recipient: address(this),
-                    deadline: block.timestamp + 300,
-                    amountIn: tokenBalance,
-                    amountOutMinimum: 0,
-                    sqrtPriceLimitX96: 0
-                });
+    //             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+    //                 tokenIn: tokens[i],
+    //                 tokenOut: address(weth),
+    //                 fee: fee,
+    //                 recipient: address(this),
+    //                 deadline: block.timestamp + 300,
+    //                 amountIn: tokenBalance,
+    //                 amountOutMinimum: 0,
+    //                 sqrtPriceLimitX96: 0
+    //             });
 
-                uniswapRouter.exactInputSingle(params);
-            }
-        }
-    }
+    //             uniswapRouter.exactInputSingle(params);
+    //         }
+    //     }
+    // }
 
     function checkAndTransfer() public {
-        swapTokensForTargetToken(rewardTokensAddresses, 3000);
+        SwapHelpers.swapTokensForTargetToken(uniswapRouter, rewardTokensAddresses, address(weth), 3000);
         uint256 wethBalance = weth.balanceOf(address(this));
         weth.withdraw(wethBalance);
-        uint256 balance = getBalance();
+        uint256 balance = address(this).balance;
         require(balance >= threshold, "Balance is below the threshold");
         (bool sent,) = address(nexStaging).call{value: balance}("");
         require(sent, "Failed to send Ether");
         emit TransferTokens(balance, block.timestamp);
-    }
-
-    function getBalance() internal view returns (uint256) {
-        return address(this).balance;
     }
 
     receive() external payable {}

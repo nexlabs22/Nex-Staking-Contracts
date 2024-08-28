@@ -10,6 +10,7 @@ import {IQuoterV2} from "@uniswap/v3-periphery/contracts/interfaces/IQuoterV2.so
 
 import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
 import {CalculationHelper} from "./libraries/CalculationHelper.sol";
+import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 
 contract NexStaging is OwnableUpgradeable {
     using SafeERC20 for IERC20;
@@ -176,7 +177,8 @@ contract NexStaging is OwnableUpgradeable {
             IERC20(pool.indexToken).safeTransfer(msg.sender, rewardAmountAfterFee);
             IERC20(pool.indexToken).safeTransfer(owner(), fee);
         } else {
-            (uint256 amountOut) = swapIndexTokensForRewardToken(position.stakeToken, rewardToken, position.stakeAmount);
+            (uint256 amountOut) =
+                SwapHelpers.swapIndexTokensForRewardToken(position.stakeToken, rewardToken, position.stakeAmount);
             (uint256 feeAmount, uint256 amountAfterFee) =
                 CalculationHelper.calculateAmountAfterFeeAndFee(amountOut, feePercent);
             IERC20(rewardToken).safeTransfer(msg.sender, amountAfterFee);
@@ -194,56 +196,58 @@ contract NexStaging is OwnableUpgradeable {
         );
 
         pool.totalStaked -= position.stakeAmount;
-        delete shareHolder[msg.sender];
+        shareHolder[msg.sender] -= position.shares;
+
+        // delete shareHolder[msg.sender];
         delete _positions[positionId];
     }
 
-    function swapTokensForPoolIndexToken(address[] memory tokens, uint24 fee) internal {
-        for (uint256 i = 0; i < tokens.length; i++) {
-            Pools storage pool = pools[tokens[i]];
-            uint256 tokenBalance = IERC20(tokens[i]).balanceOf(address(this));
+    // function swapTokensForPoolIndexToken(address[] memory tokens, uint24 fee) internal {
+    //     for (uint256 i = 0; i < tokens.length; i++) {
+    //         Pools storage pool = pools[tokens[i]];
+    //         uint256 tokenBalance = IERC20(tokens[i]).balanceOf(address(this));
 
-            if (tokenBalance > 0) {
-                IERC20(tokens[i]).approve(address(uniswapRouter), tokenBalance);
+    //         if (tokenBalance > 0) {
+    //             IERC20(tokens[i]).approve(address(uniswapRouter), tokenBalance);
 
-                ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-                    tokenIn: tokens[i],
-                    tokenOut: address(pool.indexToken),
-                    fee: fee,
-                    recipient: address(this),
-                    deadline: block.timestamp + 300,
-                    amountIn: tokenBalance,
-                    amountOutMinimum: 0,
-                    sqrtPriceLimitX96: 0
-                });
+    //             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+    //                 tokenIn: tokens[i],
+    //                 tokenOut: address(pool.indexToken),
+    //                 fee: fee,
+    //                 recipient: address(this),
+    //                 deadline: block.timestamp + 300,
+    //                 amountIn: tokenBalance,
+    //                 amountOutMinimum: 0,
+    //                 sqrtPriceLimitX96: 0
+    //             });
 
-                uniswapRouter.exactInputSingle(params);
-                pool.totalStaked += IERC20(pool.indexToken).balanceOf(address(this));
-            }
-        }
-    }
+    //             uniswapRouter.exactInputSingle(params);
+    //             pool.totalStaked += IERC20(pool.indexToken).balanceOf(address(this));
+    //         }
+    //     }
+    // }
 
-    function swapIndexTokensForRewardToken(address tokenIn, address tokenOut, uint256 amount)
-        internal
-        returns (uint256)
-    {
-        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-            tokenIn: tokenIn,
-            tokenOut: tokenOut,
-            fee: 3000,
-            recipient: address(this),
-            deadline: block.timestamp + 300,
-            amountIn: amount,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
+    // function swapIndexTokensForRewardToken(address tokenIn, address tokenOut, uint256 amount)
+    //     internal
+    //     returns (uint256)
+    // {
+    //     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+    //         tokenIn: tokenIn,
+    //         tokenOut: tokenOut,
+    //         fee: 3000,
+    //         recipient: address(this),
+    //         deadline: block.timestamp + 300,
+    //         amountIn: amount,
+    //         amountOutMinimum: 0,
+    //         sqrtPriceLimitX96: 0
+    //     });
 
-        (uint256 amountOut) = uniswapRouter.exactInputSingle(params);
-        return amountOut;
-    }
+    //     (uint256 amountOut) = uniswapRouter.exactInputSingle(params);
+    //     return amountOut;
+    // }
 
     function receiveAndProcessRewards(address[] memory tokens) internal {
-        swapTokensForPoolIndexToken(tokens, 3000);
+        SwapHelpers.swapTokensForPoolIndexToken(this, uniswapRouter, tokens, 3000);
     }
 
     // function calculateReward(uint256 amount, IERC20 indexToken) internal view returns (uint256) {

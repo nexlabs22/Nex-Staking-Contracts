@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-library CalculationHelper {
+library CalculationHelpers {
     function calculateAmountAfterFeeAndFee(uint256 amount, uint256 feePercent)
         internal
         pure

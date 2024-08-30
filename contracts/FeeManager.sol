@@ -6,16 +6,17 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 
-import {NexStaging} from "./NexStaging.sol";
+import {NexStaking} from "./NexStaking.sol";
 import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 
 contract FeeManager is OwnableUpgradeable {
     using SafeERC20 for IERC20;
 
-    NexStaging public nexStaging;
+    NexStaking public nexStaking;
     ISwapRouter public uniswapRouter;
     IWETH9 public weth;
+    IERC20 public usdc;
 
     uint256 private threshold;
     address[] private rewardTokensAddresses;
@@ -25,17 +26,19 @@ contract FeeManager is OwnableUpgradeable {
     event TransferToOwner(uint256 amount, uint256 timestamp);
 
     function initialize(
-        NexStaging _nexStagingAddress,
+        NexStaking _nexStagingAddress,
         address[] memory _rewardTokensAddresses,
         address _uniswapRouter,
         address _weth,
+        address _usdc,
         uint256 _threshold
     ) public initializer {
         __Ownable_init(msg.sender);
 
-        nexStaging = NexStaging(_nexStagingAddress);
+        nexStaking = NexStaking(_nexStagingAddress);
         uniswapRouter = ISwapRouter(_uniswapRouter);
         weth = IWETH9(_weth);
+        usdc = IERC20(_usdc);
         threshold = _threshold * 10 ** 18;
 
         for (uint256 i = 0; i < _rewardTokensAddresses.length; i++) {
@@ -49,23 +52,22 @@ contract FeeManager is OwnableUpgradeable {
         uint256 wethBalance = weth.balanceOf(address(this));
         require(wethBalance >= threshold, "WETH balance is below the threshold");
 
-        // Withdraw WETH to get ETH
-        weth.withdraw(wethBalance);
+        // Split the WETH balance
+        uint256 wethForStaging = wethBalance / 2;
+        uint256 wethForOwner = wethBalance - wethForStaging;
 
-        // Split the ETH balance
-        uint256 ethBalance = address(this).balance;
-        uint256 amountForOwner = ethBalance / 2;
-        uint256 amountForStaging = ethBalance - amountForOwner;
-
-        // Transfer ETH to the contract owner
-        (bool ownerTransferSuccess,) = owner().call{value: amountForOwner}("");
-        require(ownerTransferSuccess, "Failed to transfer ETH to the owner");
-        emit TransferToOwner(amountForOwner, block.timestamp);
-
-        // Transfer ETH to the NexStaging contract
-        (bool stagingTransferSuccess,) = address(nexStaging).call{value: amountForStaging}("");
+        // Withdraw half of WETH to get ETH and transfer to NexStaging
+        weth.withdraw(wethForStaging);
+        (bool stagingTransferSuccess,) = address(nexStaking).call{value: wethForStaging}("");
         require(stagingTransferSuccess, "Failed to transfer ETH to NexStaging contract");
-        emit TransferToStaging(amountForStaging, block.timestamp);
+        emit TransferToStaging(wethForStaging, block.timestamp);
+
+        // Swap the remaining WETH to USDC (or another token for owner)
+        uint256 usdcAmount = SwapHelpers.swapTokens(uniswapRouter, address(weth), address(usdc), wethForOwner);
+
+        // Transfer USDC (or another token) to the contract owner
+        usdc.safeTransfer(owner(), usdcAmount);
+        emit TransferToOwner(usdcAmount, block.timestamp);
     }
 
     receive() external payable {}

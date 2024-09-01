@@ -9,7 +9,8 @@ import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRoute
 import {IQuoterV2} from "@uniswap/v3-periphery/contracts/interfaces/IQuoterV2.sol";
 import {IQuoter} from "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
 import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from
+    "@openzeppelin/contracts-upgradeable/contracts/utils/ReentrancyGuardUpgradeable.sol";
 
 import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
 import {CalculationHelpers} from "./libraries/CalculationHelpers.sol";
@@ -22,10 +23,10 @@ import {OracleLibrary} from "./libraries/OracleLibrary.sol";
 contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
-    ERC4626Factory erc4626Factory;
+    ERC4626Factory public erc4626Factory;
     ISwapRouter public uniswapV3Router;
-    IUniswapV3Factory public factoryV3;
     IUniswapV2Router02 public uniswapV2Router;
+    IUniswapV3Factory public factoryV3;
     IUniswapV2Factory public factoryV2;
     IQuoter public quoter;
 
@@ -52,6 +53,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     mapping(address => uint8) public tokenSwapVersion;
+    mapping(address => bool) public supportedTokens;
     mapping(address => Pools) public pools;
     mapping(uint256 => StakePositions) private _positions;
     mapping(address => uint256) public numberOfStakersByTokenAddress;
@@ -107,22 +109,26 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         uniswapV3Router = ISwapRouter(_uniswapV3Router);
         uniswapV2Router = IUniswapV2Router02(_uniswapV2Router);
         factoryV3 = IUniswapV3Factory(_factoryV3);
-
         quoter = IQuoter(_quoter);
         weth = IWETH9(_weth);
         nexLabsToken = IERC20(_nexLabsAddress);
+
         feePercent = _feePercent;
         _nextId = 1;
 
-        for (uint256 i = 0; i < _tokenAddresses.length; i++) {
-            address vault = erc4626Factory.createERC4626Vault(_tokenAddresses[i]);
-            pools[_tokenAddresses[i]] =
-                Pools({vault: vault, indexToken: IERC20(_tokenAddresses[i]), totalStaked: 0, totalSupply: 0});
-            poolTokens.push(_tokenAddresses[i]);
-        }
+        _initializePools(_tokenAddresses);
     }
 
-    function positions(uint256 positionId)
+    function getPools(address tokenAddress)
+        external
+        view
+        returns (address vault, address indexToken, uint256 totalStaked, uint256 totalSupply)
+    {
+        Pools storage pool = pools[tokenAddress];
+        return (pool.vault, address(pool.indexToken), pool.totalStaked, pool.totalSupply);
+    }
+
+    function getPositions(uint256 positionId)
         external
         view
         returns (
@@ -146,7 +152,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     function stake(address tokenAddress, uint256 amount) external nonReentrant returns (uint256 positionId) {
-        require(tokenAddress != address(0), "Token not supported for staking.");
+        require(tokenAddress != address(0) && supportedTokens[tokenAddress], "Token not supported for staking.");
         require(amount > 0, "Staking amount must be greater than zero.");
 
         Pools storage pool = pools[tokenAddress];
@@ -159,9 +165,6 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         token.safeTransferFrom(msg.sender, owner(), fee); // Transfer fee to the owner
 
         uint256 shares = ERC4626(pool.vault).deposit(amountAfterFee, msg.sender);
-
-        // ERC4626(pool.vault).mint(amountAfterFee, msg.sender);
-        // uint256 shares = amountAfterFee;
 
         positionId = _nextId++;
 
@@ -182,30 +185,36 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         emit Staked(positionId, msg.sender, tokenAddress, pool.vault, amountAfterFee, shares, block.timestamp);
     }
 
-    function unstake(uint256 positionId, address rewardToken /*, address receiver*/ ) external nonReentrant {
+    function unstake(uint256 positionId, address rewardToken /*, address receiver uint8 _swapVersion*/ )
+        external
+        nonReentrant
+    {
         StakePositions storage position = _positions[positionId];
         require(position.owner == msg.sender, "You are not the owner of this position.");
         require(position.stakeAmount > 0, "No stake amount to unstake.");
+        // require(receiver != address(0), "Invalid receiver address.");
 
         Pools storage pool = pools[position.stakeToken];
 
-        // ERC4626(pool.vault).withdraw(position.shares, receiver, msg.sender);
-        uint256 amountOut = ERC4626(pool.vault).redeem(position.shares, address(this), msg.sender);
+        uint256 redeemedAmount = ERC4626(pool.vault).redeem(position.shares, address(this), msg.sender);
 
         if (rewardToken == position.stakeToken) {
-            // (uint256 fee, uint256 rewardAmountAfterFee) =
-            //     CalculationHelpers.calculateAmountAfterFeeAndFee(position.stakeAmount, feePercent);
             (uint256 fee, uint256 rewardAmountAfterFee) =
-                CalculationHelpers.calculateAmountAfterFeeAndFee(amountOut, feePercent);
+                CalculationHelpers.calculateAmountAfterFeeAndFee(redeemedAmount, feePercent);
             IERC20(pool.indexToken).safeTransfer(msg.sender, rewardAmountAfterFee);
             IERC20(pool.indexToken).safeTransfer(owner(), fee);
         } else {
-            uint256 swappedAmount = SwapHelpers.swapTokens(uniswapV3Router, position.stakeToken, rewardToken, amountOut);
+            uint256 swappedAmount =
+                SwapHelpers.swapTokens(uniswapV3Router, position.stakeToken, rewardToken, redeemedAmount);
             (uint256 feeAmount, uint256 amountAfterFee) =
                 CalculationHelpers.calculateAmountAfterFeeAndFee(swappedAmount, feePercent);
             IERC20(rewardToken).safeTransfer(msg.sender, amountAfterFee);
             IERC20(rewardToken).safeTransfer(owner(), feeAmount);
         }
+
+        pool.totalStaked -= position.stakeAmount;
+        pool.totalSupply -= position.shares;
+        shareHolder[msg.sender] -= position.shares;
 
         emit Unstaked(
             positionId,
@@ -217,16 +226,12 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
             block.timestamp
         );
 
-        pool.totalStaked -= position.stakeAmount;
-        pool.totalSupply -= position.shares;
-        shareHolder[msg.sender] -= position.shares;
-
         delete _positions[positionId];
     }
 
-    function distributeRewards(address[] memory tokens) internal {
+    function distributeRewards(address[] memory tokens) public {
         uint256 initialWethBalance = weth.balanceOf(address(this));
-        // @audit
+
         if (initialWethBalance < 1e18) {
             return;
         }
@@ -236,7 +241,6 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         for (uint256 i = 0; i < tokens.length; i++) {
             Pools storage pool = pools[tokens[i]];
 
-            // Calculate the amount of WETH for this pool based on its weight
             uint256 wethAmountForPool = (initialWethBalance * poolWeights[i]) / 1e18;
 
             if (wethAmountForPool == 0) {
@@ -244,24 +248,18 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
                 continue;
             }
 
-            // Swap WETH to the pool's index token
             uint256 convertedAmount =
                 SwapHelpers.swapTokens(uniswapV3Router, address(weth), address(pool.indexToken), wethAmountForPool);
 
-            // Update the total staked value in the pool
+            IERC20(pool.indexToken).approve(pool.vault, convertedAmount);
+            uint256 depositedShares = ERC4626(pool.vault).deposit(convertedAmount, address(this));
+
             pool.totalStaked += convertedAmount;
 
-            emit RewardsDistributed(tokens[i], convertedAmount, block.timestamp);
+            emit RewardsDistributed(tokens[i], depositedShares, block.timestamp);
         }
     }
 
-    receive() external payable {
-        distributeRewards(poolTokens);
-    }
-
-    fallback() external payable {
-        distributeRewards(poolTokens);
-    }
     // --------------------------------------------------------------------------------------------------------------
 
     function getExactAmountOut(address tokenIn, address tokenOut, uint256 amountIn, uint8 _swapVersion)
@@ -333,7 +331,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         return totalValue;
     }
 
-    function calculateWeightOfPools() internal view returns (uint256[] memory) {
+    function calculateWeightOfPools() public view returns (uint256[] memory) {
         uint256 totalValueAcrossAllPools = getPortfolioBalance();
         uint256[] memory weights = new uint256[](poolTokens.length);
 
@@ -342,12 +340,30 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
             uint256 poolValue =
                 getAmountOut(poolTokens[i], address(weth), pool.totalStaked, tokenSwapVersion[poolTokens[i]]);
             if (poolValue == 0) {
-                // Optionally log an event or handle this case
                 continue;
             }
             weights[i] = (poolValue * 1e18) / totalValueAcrossAllPools; // Normalize weights
         }
 
         return weights;
+    }
+
+    receive() external payable {
+        distributeRewards(poolTokens);
+    }
+
+    fallback() external payable {
+        distributeRewards(poolTokens);
+    }
+
+    function _initializePools(address[] memory _tokenAddresses) internal {
+        for (uint256 i = 0; i < _tokenAddresses.length; i++) {
+            address vault = erc4626Factory.createERC4626Vault(_tokenAddresses[i]);
+            pools[_tokenAddresses[i]] =
+                Pools({vault: vault, indexToken: IERC20(_tokenAddresses[i]), totalStaked: 0, totalSupply: 0});
+            // poolTokens.push(_tokenAddresses[i]);
+            supportedTokens[_tokenAddresses[i]] = true;
+        }
+        poolTokens = _tokenAddresses;
     }
 }

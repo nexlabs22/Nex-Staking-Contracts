@@ -36,6 +36,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     uint256 public feePercent;
     uint256 private _nextId;
 
+    // Use balanceOf instead of totalStaked and totalSupply in struct
     struct Pools {
         address vault;
         IERC20 indexToken;
@@ -86,6 +87,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     function initialize(
         address _nexLabsAddress,
         address[] memory _tokenAddresses,
+        uint8[] memory _swapVersions,
         address[] memory _indexTokens,
         uint256 _feePercent,
         address _erc4626Factory,
@@ -104,6 +106,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         require(_uniswapV2Router != address(0), "Invalid address for _uniswapV2Router");
         require(_weth != address(0), "Invalid address for _weth");
         require(_tokenAddresses.length == _indexTokens.length, "Token and index token length mismatch");
+        // Check length of swap version and token address
 
         erc4626Factory = ERC4626Factory(_erc4626Factory);
         uniswapV3Router = ISwapRouter(_uniswapV3Router);
@@ -116,7 +119,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         feePercent = _feePercent;
         _nextId = 1;
 
-        _initializePools(_tokenAddresses);
+        _initializePools(_tokenAddresses, _swapVersions);
     }
 
     function getPools(address tokenAddress)
@@ -180,11 +183,12 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         shareHolder[msg.sender] += shares;
         pool.totalStaked += amountAfterFee;
         pool.totalSupply += shares;
-        numberOfStakersByTokenAddress[tokenAddress] += 1;
+        numberOfStakersByTokenAddress[tokenAddress] += 1; // Check duplicate stakers
 
         emit Staked(positionId, msg.sender, tokenAddress, pool.vault, amountAfterFee, shares, block.timestamp);
     }
 
+    // Add input for unstake amount
     function unstake(uint256 positionId, address rewardToken /*, address receiver uint8 _swapVersion*/ )
         external
         nonReentrant
@@ -204,8 +208,16 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
             IERC20(pool.indexToken).safeTransfer(msg.sender, rewardAmountAfterFee);
             IERC20(pool.indexToken).safeTransfer(owner(), fee);
         } else {
-            uint256 swappedAmount =
-                SwapHelpers.swapTokens(uniswapV3Router, position.stakeToken, rewardToken, redeemedAmount);
+            address[] memory path;
+            path = new address[](3);
+            path[0] = position.stakeToken;
+            path[1] = address(weth);
+            path[2] = rewardToken;
+            // path = [position.stakeToken, weth, rewardToken];
+            // uint256 swappedAmount =
+            //     SwapHelpers.swapTokens(uniswapV3Router, position.stakeToken, rewardToken, redeemedAmount);
+            uint256 swappedAmount = SwapHelpers.swapIndexToReward(uniswapV3Router, path, redeemedAmount);
+            // Owner should receive index token not reward token
             (uint256 feeAmount, uint256 amountAfterFee) =
                 CalculationHelpers.calculateAmountAfterFeeAndFee(swappedAmount, feePercent);
             IERC20(rewardToken).safeTransfer(msg.sender, amountAfterFee);
@@ -232,9 +244,9 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     function distributeRewards(address[] memory tokens) public {
         uint256 initialWethBalance = weth.balanceOf(address(this));
 
-        if (initialWethBalance < 1e18) {
-            return;
-        }
+        // if (initialWethBalance < 1e18) {
+        //     return;
+        // }
 
         uint256[] memory poolWeights = calculateWeightOfPools();
 
@@ -252,7 +264,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
                 SwapHelpers.swapTokens(uniswapV3Router, address(weth), address(pool.indexToken), wethAmountForPool);
 
             IERC20(pool.indexToken).approve(pool.vault, convertedAmount);
-            uint256 depositedShares = ERC4626(pool.vault).deposit(convertedAmount, address(this));
+            uint256 depositedShares = ERC4626(pool.vault).deposit(convertedAmount, address(this)); // Transfer instead of deposit
 
             pool.totalStaked += convertedAmount;
 
@@ -356,13 +368,14 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         distributeRewards(poolTokens);
     }
 
-    function _initializePools(address[] memory _tokenAddresses) internal {
+    function _initializePools(address[] memory _tokenAddresses, uint8[] memory _swapVersions) internal {
         for (uint256 i = 0; i < _tokenAddresses.length; i++) {
             address vault = erc4626Factory.createERC4626Vault(_tokenAddresses[i]);
             pools[_tokenAddresses[i]] =
                 Pools({vault: vault, indexToken: IERC20(_tokenAddresses[i]), totalStaked: 0, totalSupply: 0});
             // poolTokens.push(_tokenAddresses[i]);
             supportedTokens[_tokenAddresses[i]] = true;
+            tokenSwapVersion[_tokenAddresses[i]] = _swapVersions[i];
         }
         poolTokens = _tokenAddresses;
     }

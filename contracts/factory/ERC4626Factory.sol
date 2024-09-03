@@ -14,6 +14,8 @@ contract ERC4626Factory is OwnableUpgradeable {
         __Ownable_init(msg.sender);
     }
 
+    // constructor() {}
+
     function createERC4626Vault(address _underlyingAsset) external onlyOwner returns (address) {
         require(_underlyingAsset != address(0), "Invalid underlying asset address");
 

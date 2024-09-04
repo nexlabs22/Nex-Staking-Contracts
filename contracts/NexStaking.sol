@@ -4,11 +4,11 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import {IQuoterV2} from "@uniswap/v3-periphery/contracts/interfaces/IQuoterV2.sol";
 import {IQuoter} from "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
-import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
+
 import {ReentrancyGuardUpgradeable} from
     "@openzeppelin/contracts-upgradeable/contracts/utils/ReentrancyGuardUpgradeable.sol";
 
@@ -24,58 +24,47 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     ERC4626Factory public erc4626Factory;
-    ISwapRouter public uniswapV3Router;
-    IUniswapV2Router02 public uniswapV2Router;
+    ISwapRouter public routerV3;
     IUniswapV3Factory public factoryV3;
+    IUniswapV2Router02 public routerV2;
     IUniswapV2Factory public factoryV2;
     IQuoter public quoter;
-
     IWETH9 public weth;
     IERC20 public nexLabsToken;
-    address[] public poolTokens;
-    uint256 public feePercent;
-    uint256 private _nextId;
 
-    // Use balanceOf instead of totalStaked and totalSupply in struct
-    struct Pools {
-        address vault;
-        IERC20 indexToken;
-        uint256 totalStaked;
-        uint256 totalSupply;
-    }
+    address[] public poolTokensAddresses;
+    address[] public rewardTokensAddresses;
+    uint8 public feePercent;
 
     struct StakePositions {
         address owner;
         address stakeToken;
-        address vault;
+        address vaultToken;
         uint256 stakeAmount;
-        uint256 shares;
         uint256 startTime;
     }
 
     mapping(address => uint8) public tokenSwapVersion;
     mapping(address => bool) public supportedTokens;
-    mapping(address => Pools) public pools;
-    mapping(uint256 => StakePositions) private _positions;
+    mapping(address => bool) public supportedRewardTokens;
+    mapping(address => address) public tokenAddressToVaultAddress;
     mapping(address => uint256) public numberOfStakersByTokenAddress;
-    mapping(address => uint256) public shareHolder;
+    mapping(address => mapping(address => StakePositions)) public _positions;
 
     event Staked(
-        uint256 indexed positionId,
         address indexed user,
         address indexed tokenAddress,
+        uint256 indexed amount,
         address vault,
-        uint256 amount,
         uint256 shares,
         uint256 timestamp
     );
 
     event Unstaked(
-        uint256 indexed positionId,
         address indexed user,
         address indexed tokenAddress,
+        uint256 indexed amount,
         address vault,
-        uint256 amount,
         uint256 shares,
         uint256 timestamp
     );
@@ -84,174 +73,116 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     event RewardDistributionSkipped(address indexed tokenAddress, string reason);
 
+    event RewardTokensSwapped(
+        address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut, address user
+    );
+
     function initialize(
-        address _nexLabsAddress,
-        address[] memory _tokenAddresses,
+        address _nexLabsTokenAddress,
+        address[] memory _indexTokensAddresses,
+        address[] memory _rewardTokensAddresses,
         uint8[] memory _swapVersions,
-        address[] memory _indexTokens,
-        uint256 _feePercent,
         address _erc4626Factory,
         address _uniswapV3Router,
-        address _uniswapV2Router,
-        address _quoter,
-        address _factoryV3,
-        address _weth
+        address _uniswapV3Factory,
+        address _weth,
+        uint8 _feePercent
     ) public initializer {
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
 
-        require(_nexLabsAddress != address(0), "Invalid address for _nexLabsAddress");
+        require(_nexLabsTokenAddress != address(0), "Invalid address for _nexLabsAddress");
         require(_erc4626Factory != address(0), "Invalid address for _erc4626Factory");
         require(_uniswapV3Router != address(0), "Invalid address for _uniswapRouter");
-        require(_uniswapV2Router != address(0), "Invalid address for _uniswapV2Router");
         require(_weth != address(0), "Invalid address for _weth");
-        require(_tokenAddresses.length == _indexTokens.length, "Token and index token length mismatch");
-        // Check length of swap version and token address
 
         erc4626Factory = ERC4626Factory(_erc4626Factory);
-        uniswapV3Router = ISwapRouter(_uniswapV3Router);
-        uniswapV2Router = IUniswapV2Router02(_uniswapV2Router);
-        factoryV3 = IUniswapV3Factory(_factoryV3);
-        quoter = IQuoter(_quoter);
+        routerV3 = ISwapRouter(_uniswapV3Router);
+        factoryV3 = IUniswapV3Factory(_uniswapV3Factory);
         weth = IWETH9(_weth);
-        nexLabsToken = IERC20(_nexLabsAddress);
-
+        nexLabsToken = IERC20(_nexLabsTokenAddress);
+        // rewardTokensAddresses = _rewardTokensAddresses;
         feePercent = _feePercent;
-        _nextId = 1;
 
-        _initializePools(_tokenAddresses, _swapVersions);
+        _initializePools(_indexTokensAddresses, _rewardTokensAddresses, _swapVersions);
     }
 
-    function getPools(address tokenAddress)
-        external
-        view
-        returns (address vault, address indexToken, uint256 totalStaked, uint256 totalSupply)
-    {
-        Pools storage pool = pools[tokenAddress];
-        return (pool.vault, address(pool.indexToken), pool.totalStaked, pool.totalSupply);
-    }
-
-    function getPositions(uint256 positionId)
-        external
-        view
-        returns (
-            address positionOwner,
-            address stakeToken,
-            address vault,
-            uint256 stakeAmount,
-            uint256 shares,
-            uint256 startTime
-        )
-    {
-        StakePositions memory position = _positions[positionId];
-        return (
-            position.owner,
-            position.stakeToken,
-            position.vault,
-            position.stakeAmount,
-            position.shares,
-            position.startTime
-        );
-    }
-
-    function stake(address tokenAddress, uint256 amount) external nonReentrant returns (uint256 positionId) {
+    function stake(address tokenAddress, uint256 amount) external nonReentrant {
+        StakePositions storage position = _positions[msg.sender][tokenAddress];
         require(tokenAddress != address(0) && supportedTokens[tokenAddress], "Token not supported for staking.");
         require(amount > 0, "Staking amount must be greater than zero.");
 
-        Pools storage pool = pools[tokenAddress];
-        require(pool.vault != address(0), "Pool not found for token.");
+        (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(amount);
 
-        (uint256 fee, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(amount, feePercent);
+        IERC20(tokenAddress).safeTransferFrom(msg.sender, owner(), fee);
+        address vault = tokenAddressToVaultAddress[tokenAddress];
+        uint256 shares = ERC4626(vault).deposit(amountAfterFee, msg.sender);
+        // token.safeTransferFrom(msg.sender, address(this), amountAfterFee);
 
-        IERC20 token = IERC20(tokenAddress);
-        token.safeTransferFrom(msg.sender, address(this), amountAfterFee);
-        token.safeTransferFrom(msg.sender, owner(), fee); // Transfer fee to the owner
+        if (position.stakeAmount > 0) {
+            position.stakeAmount += amountAfterFee;
+        } else {
+            _positions[msg.sender][tokenAddress] = StakePositions({
+                owner: msg.sender,
+                stakeToken: tokenAddress,
+                vaultToken: vault,
+                stakeAmount: amountAfterFee,
+                startTime: block.timestamp
+            });
 
-        uint256 shares = ERC4626(pool.vault).deposit(amountAfterFee, msg.sender);
+            numberOfStakersByTokenAddress[tokenAddress] += 1;
+        }
 
-        positionId = _nextId++;
-
-        _positions[positionId] = StakePositions({
-            owner: msg.sender,
-            stakeToken: tokenAddress,
-            vault: pools[tokenAddress].vault,
-            stakeAmount: amountAfterFee,
-            shares: shares,
-            startTime: block.timestamp
-        });
-
-        shareHolder[msg.sender] += shares;
-        pool.totalStaked += amountAfterFee;
-        pool.totalSupply += shares;
-        numberOfStakersByTokenAddress[tokenAddress] += 1; // Check duplicate stakers
-
-        emit Staked(positionId, msg.sender, tokenAddress, pool.vault, amountAfterFee, shares, block.timestamp);
+        emit Staked(msg.sender, tokenAddress, amountAfterFee, vault, shares, block.timestamp);
     }
 
-    // Add input for unstake amount
-    function unstake(uint256 positionId, address rewardToken /*, address receiver uint8 _swapVersion*/ )
-        external
-        nonReentrant
-    {
-        StakePositions storage position = _positions[positionId];
+    function unstake(address tokenAddress, address rewardTokenAddress, uint256 amount) external nonReentrant {
+        StakePositions storage position = _positions[msg.sender][tokenAddress];
         require(position.owner == msg.sender, "You are not the owner of this position.");
         require(position.stakeAmount > 0, "No stake amount to unstake.");
-        // require(receiver != address(0), "Invalid receiver address.");
 
-        Pools storage pool = pools[position.stakeToken];
+        address vault = tokenAddressToVaultAddress[tokenAddress];
+        uint256 shares = ERC4626(vault).balanceOf(msg.sender);
+        // uint256 unstakeAmount = ERC4626(vault).convertToAssets(shares);
 
-        uint256 redeemedAmount = ERC4626(pool.vault).redeem(position.shares, address(this), msg.sender);
+        uint256 redeemedAmount = ERC4626(vault).redeem(shares, address(this), msg.sender);
 
-        if (rewardToken == position.stakeToken) {
-            (uint256 fee, uint256 rewardAmountAfterFee) =
-                CalculationHelpers.calculateAmountAfterFeeAndFee(redeemedAmount, feePercent);
-            IERC20(pool.indexToken).safeTransfer(msg.sender, rewardAmountAfterFee);
-            IERC20(pool.indexToken).safeTransfer(owner(), fee);
+        if (rewardTokenAddress == position.stakeToken) {
+            (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemedAmount);
+            IERC20(tokenAddress).safeTransfer(msg.sender, amountAfterFee);
+            IERC20(tokenAddress).safeTransfer(owner(), fee);
         } else {
             address[] memory path;
             path = new address[](3);
-            path[0] = position.stakeToken;
+            path[0] = tokenAddress;
             path[1] = address(weth);
-            path[2] = rewardToken;
-            // path = [position.stakeToken, weth, rewardToken];
-            // uint256 swappedAmount =
-            //     SwapHelpers.swapTokens(uniswapV3Router, position.stakeToken, rewardToken, redeemedAmount);
-            uint256 swappedAmount = SwapHelpers.swapIndexToReward(uniswapV3Router, path, redeemedAmount);
-            // Owner should receive index token not reward token
-            (uint256 feeAmount, uint256 amountAfterFee) =
-                CalculationHelpers.calculateAmountAfterFeeAndFee(swappedAmount, feePercent);
-            IERC20(rewardToken).safeTransfer(msg.sender, amountAfterFee);
-            IERC20(rewardToken).safeTransfer(owner(), feeAmount);
+            path[2] = rewardTokenAddress;
+
+            uint256 rewardAmount = redeemedAmount - position.stakeAmount;
+            uint256 stakedAmount = position.stakeAmount;
+
+            (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemedAmount);
+            IERC20(tokenAddress).safeTransfer(owner(), fee);
+            IERC20(tokenAddress).safeTransfer(msg.sender, stakedAmount);
+            uint256 swappedAmount = SwapHelpers.swapIndexToReward(routerV3, path, rewardAmount, msg.sender);
+
+            emit RewardTokensSwapped(tokenAddress, rewardTokenAddress, rewardAmount, swappedAmount, msg.sender);
         }
 
-        pool.totalStaked -= position.stakeAmount;
-        pool.totalSupply -= position.shares;
-        shareHolder[msg.sender] -= position.shares;
+        if (ERC4626(vault).balanceOf(msg.sender) == 0) {
+            numberOfStakersByTokenAddress[tokenAddress] -= 1;
+        }
 
-        emit Unstaked(
-            positionId,
-            msg.sender,
-            position.stakeToken,
-            pool.vault,
-            position.stakeAmount,
-            position.shares,
-            block.timestamp
-        );
-
-        delete _positions[positionId];
+        emit Unstaked(msg.sender, tokenAddress, redeemedAmount, vault, shares, block.timestamp);
     }
 
     function distributeRewards(address[] memory tokens) public {
         uint256 initialWethBalance = weth.balanceOf(address(this));
 
-        // if (initialWethBalance < 1e18) {
-        //     return;
-        // }
-
         uint256[] memory poolWeights = calculateWeightOfPools();
 
         for (uint256 i = 0; i < tokens.length; i++) {
-            Pools storage pool = pools[tokens[i]];
+            address vault = tokenAddressToVaultAddress[tokens[i]];
 
             uint256 wethAmountForPool = (initialWethBalance * poolWeights[i]) / 1e18;
 
@@ -260,19 +191,14 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
                 continue;
             }
 
-            uint256 convertedAmount =
-                SwapHelpers.swapTokens(uniswapV3Router, address(weth), address(pool.indexToken), wethAmountForPool);
+            uint256 convertedAmount = SwapHelpers.swapTokens(routerV3, address(weth), tokens[i], wethAmountForPool);
 
-            IERC20(pool.indexToken).approve(pool.vault, convertedAmount);
-            uint256 depositedShares = ERC4626(pool.vault).deposit(convertedAmount, address(this)); // Transfer instead of deposit
+            IERC20(tokens[i]).approve(vault, convertedAmount);
+            IERC20(tokens[i]).safeTransfer(vault, convertedAmount);
 
-            pool.totalStaked += convertedAmount;
-
-            emit RewardsDistributed(tokens[i], depositedShares, block.timestamp);
+            emit RewardsDistributed(tokens[i], convertedAmount, block.timestamp);
         }
     }
-
-    // --------------------------------------------------------------------------------------------------------------
 
     function getExactAmountOut(address tokenIn, address tokenOut, uint256 amountIn, uint8 _swapVersion)
         public
@@ -288,7 +214,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
             address[] memory path = new address[](2);
             path[0] = tokenIn;
             path[1] = tokenOut;
-            try uniswapV2Router.getAmountsOut(amountIn, path) returns (uint256[] memory _amounts) {
+            try routerV2.getAmountsOut(amountIn, path) returns (uint256[] memory _amounts) {
                 return _amounts[1];
             } catch {
                 revert("Uniswap V2 Quote failed");
@@ -308,7 +234,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
                 address[] memory path = new address[](2);
                 path[0] = tokenIn;
                 path[1] = tokenOut;
-                uint256[] memory v2amountOut = uniswapV2Router.getAmountsOut(amountIn, path);
+                uint256[] memory v2amountOut = routerV2.getAmountsOut(amountIn, path);
                 return v2amountOut[1];
             }
         }
@@ -326,16 +252,14 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     function getPortfolioBalance() public view returns (uint256 totalValue) {
-        for (uint256 i = 0; i < poolTokens.length; i++) {
-            address tokenAddress = poolTokens[i];
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            address tokenAddress = poolTokensAddresses[i];
+            address vault = tokenAddressToVaultAddress[tokenAddress];
             if (tokenAddress == address(weth)) {
-                totalValue += IERC20(tokenAddress).balanceOf(address(pools[tokenAddress].vault));
+                totalValue += IERC20(tokenAddress).balanceOf(vault);
             } else {
                 uint256 value = getAmountOut(
-                    tokenAddress,
-                    address(weth),
-                    IERC20(tokenAddress).balanceOf(address(pools[tokenAddress].vault)),
-                    tokenSwapVersion[tokenAddress]
+                    tokenAddress, address(weth), IERC20(tokenAddress).balanceOf(vault), tokenSwapVersion[tokenAddress]
                 );
                 totalValue += value;
             }
@@ -345,38 +269,52 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     function calculateWeightOfPools() public view returns (uint256[] memory) {
         uint256 totalValueAcrossAllPools = getPortfolioBalance();
-        uint256[] memory weights = new uint256[](poolTokens.length);
+        uint256[] memory weights = new uint256[](poolTokensAddresses.length);
 
-        for (uint256 i = 0; i < poolTokens.length; i++) {
-            Pools storage pool = pools[poolTokens[i]];
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            address vault = tokenAddressToVaultAddress[poolTokensAddresses[i]];
+            uint256 balance = IERC20(poolTokensAddresses[i]).balanceOf(vault);
             uint256 poolValue =
-                getAmountOut(poolTokens[i], address(weth), pool.totalStaked, tokenSwapVersion[poolTokens[i]]);
+                getAmountOut(poolTokensAddresses[i], address(weth), balance, tokenSwapVersion[poolTokensAddresses[i]]);
             if (poolValue == 0) {
                 continue;
             }
-            weights[i] = (poolValue * 1e18) / totalValueAcrossAllPools; // Normalize weights
+            weights[i] = (poolValue * 1e18) / totalValueAcrossAllPools;
         }
 
         return weights;
     }
 
-    receive() external payable {
-        distributeRewards(poolTokens);
-    }
-
-    fallback() external payable {
-        distributeRewards(poolTokens);
-    }
-
-    function _initializePools(address[] memory _tokenAddresses, uint8[] memory _swapVersions) internal {
-        for (uint256 i = 0; i < _tokenAddresses.length; i++) {
-            address vault = erc4626Factory.createERC4626Vault(_tokenAddresses[i]);
-            pools[_tokenAddresses[i]] =
-                Pools({vault: vault, indexToken: IERC20(_tokenAddresses[i]), totalStaked: 0, totalSupply: 0});
-            // poolTokens.push(_tokenAddresses[i]);
-            supportedTokens[_tokenAddresses[i]] = true;
-            tokenSwapVersion[_tokenAddresses[i]] = _swapVersions[i];
+    function _initializePools(
+        address[] memory _indexTokensAddresses,
+        address[] memory _rewardTokensAddresses,
+        uint8[] memory _swapVersions
+    ) internal {
+        for (uint256 i = 0; i < _indexTokensAddresses.length; i++) {
+            address vault = erc4626Factory.createERC4626Vault(_indexTokensAddresses[i]);
+            tokenAddressToVaultAddress[_indexTokensAddresses[i]] = vault;
+            supportedTokens[_indexTokensAddresses[i]] = true;
+            tokenSwapVersion[_indexTokensAddresses[i]] = _swapVersions[i];
         }
-        poolTokens = _tokenAddresses;
+
+        for (uint256 i = 0; i < _rewardTokensAddresses.length; i++) {
+            supportedRewardTokens[_rewardTokensAddresses[i]] = true;
+        }
+        rewardTokensAddresses = _rewardTokensAddresses;
+        poolTokensAddresses = _indexTokensAddresses;
+    }
+
+    function calculateAmountAfterFeeAndFee(uint256 amount)
+        internal
+        view
+        returns (uint256 fee, uint256 amountAfterFee)
+    {
+        (fee, amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(amount, feePercent);
+    }
+
+    function getUserShares(address user, address tokenAddress) public view returns (uint256) {
+        address vault = tokenAddressToVaultAddress[tokenAddress];
+        uint256 shares = ERC4626(vault).balanceOf(user);
+        return shares;
     }
 }

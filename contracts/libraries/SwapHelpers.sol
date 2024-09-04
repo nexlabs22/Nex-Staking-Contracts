@@ -70,7 +70,7 @@ library SwapHelpers {
     /// @param path The swap path from index token to WETH to the chosen reward token.
     /// @param amountIn The amount of index token to swap.
     /// @return amountOut The amount of reward token received from the swap.
-    function swapIndexToReward(ISwapRouter uniswapRouter, address[] memory path, uint256 amountIn)
+    function swapIndexToReward(ISwapRouter uniswapRouter, address[] memory path, uint256 amountIn, address recipient)
         internal
         returns (uint256 amountOut)
     {
@@ -79,7 +79,7 @@ library SwapHelpers {
 
         ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
             path: abi.encodePacked(path[0], uint24(3000), path[1], uint24(3000), path[2]),
-            recipient: address(this),
+            recipient: recipient,
             deadline: block.timestamp + 300,
             amountIn: amountIn,
             amountOutMinimum: 0

@@ -1,167 +1,151 @@
-// // SPDX-License-Identifier: MIT
-// pragma solidity ^0.8.26;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
 
-// import {Test} from "forge-std/Test.sol";
-// import {NexStaking} from "../../contracts/NexStaking.sol";
-// import {ERC4626Factory} from "../../contracts/factory/ERC4626Factory.sol";
-// import {MockERC20} from "./mocks/MockERC20.sol";
-// import {IWETH9} from "../../contracts/interfaces/IWETH9.sol";
+import {Test} from "forge-std/Test.sol";
+import {console} from "forge-std/console.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 
-// contract NexStakingTest is Test {
-//     NexStaking nexStaking;
-//     ERC4626Factory erc4626Factory;
-//     MockERC20 mockToken;
-//     MockERC20 mockRewardToken;
-//     IWETH9 mockWeth;
-//     address owner = address(this);
+import {ERC4626Factory} from "../../contracts/factory/ERC4626Factory.sol";
+import {NexStaking} from "../../contracts/NexStaking.sol";
+import {MockERC20} from "./mocks/MockERC20.sol";
 
-//     function setUp() public {
-//         erc4626Factory = new ERC4626Factory();
-//         mockToken = new MockERC20("Mock Token", "MTK", 18);
-//         mockRewardToken = new MockERC20("Reward Token", "RTK", 18);
-//         mockWeth = IWETH9(address(new MockERC20("Wrapped Ether", "WETH", 18)));
+contract NexStakingTest is Test {
+    uint256 mainnetFork;
 
-//         // Initialize tokenAddresses array
-//         address[] memory tokenAddresses;
-//         tokenAddresses = new address[](1);
-//         tokenAddresses[0] = address(mockToken);
+    TransparentUpgradeableProxy public proxy;
+    ProxyAdmin public proxyAdmin;
 
-//         // Initialize indexTokens array
-//         address[] memory indexTokens;
-//         indexTokens = new address[](1);
-//         indexTokens[0] = address(mockToken);
+    NexStaking public nexStaking;
+    IERC20 public testToken;
+    ERC4626Factory public erc4626Factory;
+    MockERC20 public nexLabsToken;
+    MockERC20 public indexTokens1;
+    MockERC20 public indexTokens2;
 
-//         // Deploy the NexStaking contract with constructor
-//         nexStaking = new NexStaking(
-//             address(mockToken),
-//             tokenAddresses,
-//             indexTokens,
-//             100, // Fee percent (1%)
-//             address(erc4626Factory),
-//             0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E, // UniswapV3Router
-//             0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E, // UniswapV2Router
-//             0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3, // Quoter
-//             0x0227628f3F023bb0B980b67D528571c95c6DaC1c, // UniswapV3Factory
-//             address(mockWeth)
-//         );
-//     }
+    address public owner = address(10); // Simulate owner account
+    address public user = address(1); // Mock user
+    uint256 public initialStakeAmount = 1000e18;
+    uint256 public contractInitialBalance = initialStakeAmount * 100;
 
-//     // Test contract deployment and constructor initialization
-//     function testConstructor() public {
-//         assertEq(address(nexStaking.nexLabsToken()), address(mockToken));
-//         assertEq(nexStaking.feePercent(), 100);
-//     }
+    string MAINNET_RPC_URL = vm.envString("MAINNET_RPC_URL");
 
-//     // Test staking with valid inputs
-//     function testStake() public {
-//         uint256 stakeAmount = 1e18;
+    function setUp() public {
+        mainnetFork = vm.createFork(MAINNET_RPC_URL);
 
-//         mockToken.mint(address(this), stakeAmount);
-//         mockToken.approve(address(nexStaking), stakeAmount);
+        nexLabsToken = new MockERC20("Nex Labs Token", "NXL");
+        indexTokens1 = new MockERC20("Index Token 1", "ITK1");
+        indexTokens2 = new MockERC20("Reward Token", "RTK");
 
-//         uint256 positionId = nexStaking.stake(address(mockToken), stakeAmount);
+        // Deploy mock ERC4626 factory
+        erc4626Factory = new ERC4626Factory(); // Assume ERC4626Factory implementation
 
-//         (address owner,, address vault, uint256 stakedAmount, uint256 shares,) = nexStaking.getPositions(positionId);
+        // Dynamic arrays for index tokens, reward tokens, and swap versions
+        address[] memory indexTokens = new address[](1);
+        indexTokens[0] = address(indexTokens1);
 
-//         assertEq(owner, address(this));
-//         assertEq(stakedAmount, stakeAmount - (stakeAmount / 100)); // Account for fee
-//         assertEq(shares > 0, true);
-//     }
+        address[] memory rewardTokens = new address[](1);
+        rewardTokens[0] = address(indexTokens2);
 
-//     // Test staking with zero amount (should fail)
-//     function testStakeWithZeroAmount() public {
-//         vm.expectRevert("Staking amount must be greater than zero.");
-//         nexStaking.stake(address(mockToken), 0);
-//     }
+        uint8[] memory swapVersions = new uint8[](1);
+        swapVersions[0] = 3;
 
-//     // Test staking with unsupported token (should fail)
-//     function testStakeWithUnsupportedToken() public {
-//         MockERC20 unsupportedToken = new MockERC20("Unsupported Token", "UTK", 18);
+        uint8 feePercent = 3;
 
-//         vm.expectRevert("Token not supported for staking.");
-//         nexStaking.stake(address(unsupportedToken), 1e18);
-//     }
+        NexStaking nexStakingImplementation = new NexStaking();
+        vm.startPrank(owner);
 
-//     // Test unstaking with valid parameters
-//     function testUnstake() public {
-//         uint256 stakeAmount = 1e18;
+        bytes memory data = abi.encodeWithSignature(
+            "initialize(address,address[],address[],uint8[],address,address,address,uint8)",
+            address(nexLabsToken), // NexLabs token
+            indexTokens, // Index tokens array
+            rewardTokens, // Reward tokens array
+            swapVersions, // Swap versions
+            address(erc4626Factory), // ERC4626Factory address
+            address(0xE592427A0AEce92De3Edee1F18E0157C05861564), // Uniswap V3 router
+            address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2), // WETH address
+            feePercent // Fee percent
+        );
 
-//         mockToken.mint(address(this), stakeAmount);
-//         mockToken.approve(address(nexStaking), stakeAmount);
+        proxyAdmin = new ProxyAdmin(owner);
 
-//         uint256 positionId = nexStaking.stake(address(mockToken), stakeAmount);
+        // Deploy the TransparentUpgradeableProxy pointing to NexStaking
+        vm.stopPrank();
+        proxy = new TransparentUpgradeableProxy(address(nexStakingImplementation), address(proxyAdmin), data);
 
-//         uint256 balanceBefore = mockToken.balanceOf(address(this));
-//         nexStaking.unstake(positionId, address(mockToken));
-//         uint256 balanceAfter = mockToken.balanceOf(address(this));
+        // Cast the proxy address to NexStaking to interact with the proxy
+        nexStaking = NexStaking(address(proxy));
 
-//         assertGt(balanceAfter, balanceBefore);
-//     }
+        // Transfer ownership of ERC4626Factory to the NexStaking contract
+        // vm.prank(owner); // Simulate the owner account making this call
+        // erc4626Factory.transferOwnership(address(nexStaking));
 
-//     // Test unstaking by non-owner (should fail)
-//     function testUnstakeByNonOwner() public {
-//         uint256 stakeAmount = 1e18;
+        mintAndApproveTokens(user);
 
-//         mockToken.mint(address(this), stakeAmount);
-//         mockToken.approve(address(nexStaking), stakeAmount);
+        console.log("Owner address: ", owner);
+    }
 
-//         uint256 positionId = nexStaking.stake(address(mockToken), stakeAmount);
+    function mintAndApproveTokens(address _user) internal {
+        // Mint tokens to the user and the staking contract
+        nexLabsToken.mint(_user, initialStakeAmount);
+        indexTokens1.mint(_user, initialStakeAmount);
+        indexTokens2.mint(_user, initialStakeAmount);
 
-//         vm.prank(address(0x123));
-//         vm.expectRevert("You are not the owner of this position.");
-//         nexStaking.unstake(positionId, address(mockToken));
-//     }
+        nexLabsToken.mint(address(nexStaking), contractInitialBalance);
+        indexTokens1.mint(address(nexStaking), contractInitialBalance);
+        indexTokens2.mint(address(nexStaking), contractInitialBalance);
 
-//     // Test rewards distribution when WETH balance is above threshold
-//     function testDistributeRewards() public {
-//         uint256 wethAmount = 1e18;
-//         mockWeth.deposit{value: wethAmount}();
-//         mockWeth.transfer(address(nexStaking), wethAmount);
+        // Approve tokens for the NexStaking contract
+        vm.startPrank(_user);
 
-//         address[] memory tokens;
-//         tokens = new address[](1);
-//         tokens[0] = address(mockToken);
+        // Check the user's balance
+        console.log("User indexTokens1 balance before approval:", indexTokens1.balanceOf(_user));
 
-//         nexStaking.distributeRewards(tokens);
-//         // Further assertions can be made on the rewards distributed
-//     }
+        nexLabsToken.approve(address(nexStaking), initialStakeAmount);
+        indexTokens1.approve(address(nexStaking), initialStakeAmount);
+        indexTokens2.approve(address(nexStaking), initialStakeAmount);
 
-//     // Test calculateWeightOfPools with non-zero total staked amounts
-//     function testCalculateWeightOfPools() public {
-//         uint256 stakeAmount1 = 1e18;
-//         uint256 stakeAmount2 = 2e18;
+        // Check the user's allowance for indexTokens1
+        uint256 allowance = indexTokens1.allowance(_user, address(nexStaking));
+        console.log("Allowance for indexTokens1:", allowance);
 
-//         mockToken.mint(address(this), stakeAmount1 + stakeAmount2);
-//         mockToken.approve(address(nexStaking), stakeAmount1 + stakeAmount2);
+        vm.stopPrank();
+    }
 
-//         nexStaking.stake(address(mockToken), stakeAmount1);
-//         nexStaking.stake(address(mockToken), stakeAmount2);
+    function testStake() public {
+        // Check user's balance before staking
+        uint256 userBalanceBefore = indexTokens1.balanceOf(user);
+        console.log("User's balance before staking:", userBalanceBefore);
 
-//         uint256[] memory weights = nexStaking.calculateWeightOfPools();
-//         assertEq(weights[0] > 0, true);
-//     }
+        // Check the user's allowance for staking
+        uint256 allowanceBefore = indexTokens1.allowance(user, address(nexStaking));
+        console.log("User's allowance before staking:", allowanceBefore);
 
-//     // Test getExactAmountOut
-//     function testGetExactAmountOut() public {
-//         uint256 amountIn = 1e18;
-//         uint256 amountOut = nexStaking.getExactAmountOut(address(mockToken), address(mockWeth), amountIn, 3);
+        // Start staking process
+        vm.startPrank(user);
+        nexStaking.stake(address(indexTokens1), initialStakeAmount);
+        vm.stopPrank();
 
-//         assertGt(amountOut, 0);
-//     }
+        // Check user's balance after staking
+        uint256 userBalanceAfter = indexTokens1.balanceOf(user);
+        console.log("User's balance after staking:", userBalanceAfter);
 
-//     // Test getAmountOut
-//     function testGetAmountOut() public {
-//         uint256 amountIn = 1e18;
-//         uint256 amountOut = nexStaking.getAmountOut(address(mockToken), address(mockWeth), amountIn, 3);
+        // Check the balance in the vault after staking
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens1));
+        uint256 vaultBalance = indexTokens1.balanceOf(vault);
+        assertEq(vaultBalance, initialStakeAmount, "Incorrect vault balance after staking");
 
-//         assertGt(amountOut, 0);
-//     }
+        // Check user's position after staking
+        (address owner,,, uint256 userStakeAmount,) = nexStaking._positions(user, address(indexTokens1));
+        assertEq(userStakeAmount, initialStakeAmount, "Stake amount does not match the staked tokens");
 
-//     // Test getPortfolioBalance
-//     function testGetPortfolioBalance() public {
-//         uint256 balance = nexStaking.getPortfolioBalance();
-//         assertEq(balance, 0); // Initially, no staked tokens, so balance should be zero
-//     }
-
-//     receive() external payable {}
-// }
+        console.log("Owner", owner);
+        console.log("Index Token 1", address(indexTokens1));
+        console.log("Index Token 2", address(indexTokens2));
+        // Assert shares received
+        uint256 userShares = ERC4626(vault).balanceOf(user);
+        assertGt(userShares, 0, "User did not receive shares after staking");
+    }
+}

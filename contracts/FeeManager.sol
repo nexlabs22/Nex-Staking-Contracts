@@ -5,30 +5,36 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
+import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 
 import {NexStaking} from "./NexStaking.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 import {IUniswapV2Router02} from "./interfaces/IUniswapV2Router02.sol";
+import {OracleLibrary} from "./libraries/OracleLibrary.sol";
 
 contract FeeManager is OwnableUpgradeable {
     using SafeERC20 for IERC20;
 
     NexStaking public nexStaking;
-    ISwapRouter public uniswapRouter;
-    IUniswapV2Router02 public uniswapV2Router;
+    ISwapRouter public routerV3;
+    IUniswapV2Router02 public routerV2;
+    IUniswapV3Factory public factoryV3;
     IWETH9 public weth;
     IERC20 public usdc;
 
     uint256 private threshold;
-    address[] private rewardTokensAddresses;
+    address[] public rewardTokensAddresses;
+    address[] public poolTokensAddresses;
 
-    event TransferToStaking(uint256 indexed amount, uint256 timestamp);
-    event TransferToOwner(uint256 indexed amount, uint256 timestamp);
-    event TokensSwapped(address indexed token, uint256 amountIn, uint256 amountOut);
+    event RewardsDistributed(address indexed tokenAddress, uint256 amount, uint256 timestamp);
+    event RewardDistributionSkipped(address indexed tokenAddress, string reason);
+    event TransferToOwner(uint256 indexed usdcAmount, uint256 timestamp);
+    event TokensSwapped(address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut);
 
     function initialize(
         NexStaking _nexStagingAddress,
+        address[] memory _indexTokensAddresses,
         address[] memory _rewardTokensAddresses,
         address _uniswapRouter,
         address _uniswapV2Router,
@@ -39,40 +45,152 @@ contract FeeManager is OwnableUpgradeable {
         __Ownable_init(msg.sender);
 
         nexStaking = NexStaking(_nexStagingAddress);
-        uniswapRouter = ISwapRouter(_uniswapRouter);
-        uniswapV2Router = IUniswapV2Router02(_uniswapV2Router);
+        routerV3 = ISwapRouter(_uniswapRouter);
+        routerV2 = IUniswapV2Router02(_uniswapV2Router);
         weth = IWETH9(_weth);
         usdc = IERC20(_usdc);
         threshold = _threshold * 10 ** 18;
 
         rewardTokensAddresses = _rewardTokensAddresses;
+        // poolTokensAddresses = nexStaking.poolTokensAddresses();
+        poolTokensAddresses = _indexTokensAddresses;
     }
 
+    /// @dev This function checks and processes rewards distribution based on threshold
     function checkAndTransfer() external onlyOwner {
         // Swap all reward tokens to WETH (ETH)
-        SwapHelpers.swapTokensForTargetToken(uniswapRouter, rewardTokensAddresses, address(weth), 3000);
+        _swapRewardTokensToWETH();
 
         uint256 wethBalance = weth.balanceOf(address(this));
         require(wethBalance >= threshold, "WETH balance is below the threshold");
 
         // Split the WETH balance
-        uint256 wethForStaking = wethBalance / 2;
-        uint256 wethForOwner = wethBalance - wethForStaking;
+        uint256 wethForOwner = wethBalance / 2;
+        uint256 wethForStaking = wethBalance - wethForOwner;
 
-        // Withdraw half of WETH to get ETH and transfer to NexStaking
-        weth.withdraw(wethForStaking);
-        (bool stakingTransferSuccess,) = address(nexStaking).call{value: wethForStaking}("");
-        require(stakingTransferSuccess, "Failed to transfer ETH to NexStaking contract");
-        emit TransferToStaking(wethForStaking, block.timestamp);
+        // Swap half of WETH to USDC and transfer to the owner
+        _swapWETHToUSDCAndTransfer(wethForOwner);
 
-        // Swap the remaining WETH to USDC and transfer to the owner
-        uint256 usdcAmount = SwapHelpers.swapTokens(uniswapRouter, address(weth), address(usdc), wethForOwner);
+        // Distribute the other half of WETH to the staking pools based on pool weights
+        _distributeWETHToPools(wethForStaking);
+    }
 
-        usdc.safeTransfer(owner(), usdcAmount);
-        emit TransferToOwner(usdcAmount, block.timestamp);
+    /// @dev This function swaps all the reward tokens held by FeeManager into WETH
+    function _swapRewardTokensToWETH() internal {
+        for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
+            uint256 tokenBalance = IERC20(rewardTokensAddresses[i]).balanceOf(address(this));
+            if (tokenBalance > 0) {
+                uint256 swappedAmount =
+                    SwapHelpers.swapTokens(routerV3, rewardTokensAddresses[i], address(weth), tokenBalance);
+                emit TokensSwapped(rewardTokensAddresses[i], address(weth), tokenBalance, swappedAmount);
+            }
+        }
+    }
+
+    /// @dev This function swaps WETH to USDC and transfers to the contract owner
+    function _swapWETHToUSDCAndTransfer(uint256 wethAmount) internal {
+        uint256 swappedAmount = SwapHelpers.swapTokens(routerV3, address(weth), address(usdc), wethAmount);
+        usdc.safeTransfer(owner(), swappedAmount);
+        emit TransferToOwner(swappedAmount, block.timestamp);
+    }
+
+    /// @dev This function distributes WETH to all pools based on their calculated weight
+    function _distributeWETHToPools(uint256 wethForStaking) internal {
+        uint256[] memory poolWeights = calculateWeightOfPools();
+
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            address vault = nexStaking.tokenAddressToVaultAddress(poolTokensAddresses[i]);
+
+            uint256 wethAmountForPool = (wethForStaking * poolWeights[i]) / 1e18;
+            if (wethAmountForPool == 0) {
+                emit RewardDistributionSkipped(poolTokensAddresses[i], "Weight is zero");
+                continue;
+            }
+
+            // Swap WETH to the pool's index token
+            uint256 tokenAmountForPool =
+                SwapHelpers.swapTokens(routerV3, address(weth), poolTokensAddresses[i], wethAmountForPool);
+
+            // Approve and transfer the converted amount to the pool's vault
+            IERC20(poolTokensAddresses[i]).approve(vault, tokenAmountForPool);
+            IERC20(poolTokensAddresses[i]).safeTransfer(vault, tokenAmountForPool);
+
+            emit RewardsDistributed(poolTokensAddresses[i], tokenAmountForPool, block.timestamp);
+        }
+    }
+
+    /// @dev Calculates the weights of all pools relative to the total value in all pools
+    function calculateWeightOfPools() public view returns (uint256[] memory) {
+        uint256 totalValueAcrossAllPools = getPortfolioBalance();
+        uint256[] memory weights = new uint256[](poolTokensAddresses.length);
+
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            address vault = nexStaking.tokenAddressToVaultAddress(poolTokensAddresses[i]);
+            uint256 balance = IERC20(poolTokensAddresses[i]).balanceOf(vault);
+            uint256 poolValue = getAmountOut(
+                poolTokensAddresses[i], address(weth), balance, nexStaking.tokenSwapVersion(poolTokensAddresses[i])
+            );
+
+            if (poolValue == 0) {
+                continue;
+            }
+
+            weights[i] = (poolValue * 1e18) / totalValueAcrossAllPools; // Normalize to 18 decimals
+        }
+
+        return weights;
+    }
+
+    /// @dev Returns the total value of all assets in the pools in terms of WETH
+    function getPortfolioBalance() public view returns (uint256 totalValue) {
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            address tokenAddress = poolTokensAddresses[i];
+            address vault = nexStaking.tokenAddressToVaultAddress(tokenAddress);
+            if (tokenAddress == address(weth)) {
+                totalValue += IERC20(tokenAddress).balanceOf(vault);
+            } else {
+                uint256 value = getAmountOut(
+                    tokenAddress,
+                    address(weth),
+                    IERC20(tokenAddress).balanceOf(vault),
+                    nexStaking.tokenSwapVersion(tokenAddress)
+                );
+                totalValue += value;
+            }
+        }
+        return totalValue;
+    }
+
+    /// @dev Gets the amount out for token swaps between different versions (V2 and V3)
+    function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn, uint8 _swapVersion)
+        public
+        view
+        returns (uint256 finalAmountOut)
+    {
+        if (amountIn > 0) {
+            if (_swapVersion == 3) {
+                return estimateAmountOut(tokenIn, tokenOut, uint128(amountIn));
+            } else {
+                address[] memory path = new address[](2);
+                path[0] = tokenIn;
+                path[1] = tokenOut;
+                uint256[] memory v2amountOut = routerV2.getAmountsOut(amountIn, path);
+                return v2amountOut[1];
+            }
+        }
+        return 0;
+    }
+
+    /// @dev Estimate amount out for Uniswap V3 swaps based on current pool tick
+    function estimateAmountOut(address tokenIn, address tokenOut, uint128 amountIn)
+        public
+        view
+        returns (uint256 amountOut)
+    {
+        address _pool = factoryV3.getPool(tokenIn, tokenOut, 3000);
+        int24 tick = OracleLibrary.getLatestTick(_pool);
+        amountOut = OracleLibrary.getQuoteAtTick(tick, amountIn, tokenIn, tokenOut);
     }
 
     receive() external payable {}
-
-    fallback() external payable {}
 }

@@ -124,6 +124,7 @@ contract NexStakingTest is Test {
         console.log("User's balance before staking:", userBalanceBefore);
 
         vm.startPrank(user);
+        indexToken1.approve(address(nexStaking), initialStakeAmount);
         nexStaking.stake(address(indexToken1), initialStakeAmount);
         vm.stopPrank();
 
@@ -164,16 +165,16 @@ contract NexStakingTest is Test {
     }
 
     function testCalculateWeights() public {
-        vm.mockCall(address(nexStaking), abi.encodeWithSignature("getPortfolioBalance()"), abi.encode(200 ether));
+        vm.mockCall(address(feeManager), abi.encodeWithSignature("getPortfolioBalance()"), abi.encode(200 ether));
 
         vm.mockCall(
-            address(nexStaking),
+            address(feeManager),
             abi.encodeWithSignature("getAmountOut(address,address,uint256,uint8)"),
             abi.encode(100 ether)
         );
 
         vm.mockCall(
-            address(nexStaking),
+            address(feeManager),
             abi.encodeWithSignature("getAmountOut(address,address,uint256,uint8)"),
             abi.encode(100 ether)
         );
@@ -189,16 +190,16 @@ contract NexStakingTest is Test {
             address(feeManager), abi.encodeWithSignature("swapTokens(address,address,uint256)"), abi.encode(50 ether)
         );
 
-        vm.mockCall(address(nexStaking), abi.encodeWithSignature("getPortfolioBalance()"), abi.encode(200 ether));
+        vm.mockCall(address(feeManager), abi.encodeWithSignature("getPortfolioBalance()"), abi.encode(200 ether));
 
         vm.mockCall(
-            address(nexStaking),
+            address(feeManager),
             abi.encodeWithSignature("getAmountOut(address,address,uint256,uint8)"),
             abi.encode(100 ether)
         );
 
         vm.mockCall(
-            address(nexStaking),
+            address(feeManager),
             abi.encodeWithSignature("getAmountOut(address,address,uint256,uint8)"),
             abi.encode(100 ether)
         );

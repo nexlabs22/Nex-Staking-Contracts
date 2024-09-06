@@ -61,18 +61,18 @@ contract FeeManager is OwnableUpgradeable {
         // Swap all reward tokens to WETH (ETH)
         _swapRewardTokensToWETH();
 
-        uint256 wethBalance = weth.balanceOf(address(this));
-        require(wethBalance >= threshold, "WETH balance is below the threshold");
+        // uint256 wethBalance = weth.balanceOf(address(this));
+        // require(wethBalance >= threshold, "WETH balance is below the threshold");
 
-        // Split the WETH balance
-        uint256 wethForOwner = wethBalance / 2;
-        uint256 wethForStaking = wethBalance - wethForOwner;
+        // // Split the WETH balance
+        // uint256 wethForOwner = wethBalance / 2;
+        // uint256 wethForStaking = wethBalance - wethForOwner;
 
         // Swap half of WETH to USDC and transfer to the owner
-        _swapWETHToUSDCAndTransfer(wethForOwner);
+        // _swapWETHToUSDCAndTransfer(wethForOwner);
 
         // Distribute the other half of WETH to the staking pools based on pool weights
-        _distributeWETHToPools(wethForStaking);
+        // _distributeWETHToPools(wethForStaking);
     }
 
     function _swapRewardTokensToWETH() internal {

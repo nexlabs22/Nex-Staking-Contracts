@@ -11,8 +11,11 @@ import "../../contracts/factory/ERC4626Factory.sol";
 import "../../contracts/interfaces/IUniswapV2Router02.sol";
 import "../../contracts/interfaces/IUniswapV3Factory2.sol";
 import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol"; // Import SafeERC20
 
 contract FeeManagerWithNexStakingTest is Test {
+    using SafeERC20 for IERC20; // Use SafeERC20 for IERC20 interface
+
     uint256 mainnetFork;
 
     FeeManager feeManager;
@@ -75,7 +78,7 @@ contract FeeManagerWithNexStakingTest is Test {
             address(erc4626Factory), // ERC4626 factory (not used)
             uniswapV3Router, // Uniswap V3 router
             address(weth), // WETH address
-            5 // Fee percentage
+            3 // Fee percentage
         );
         console.log("NexStaking initialized");
 
@@ -132,37 +135,6 @@ contract FeeManagerWithNexStakingTest is Test {
         }
     }
 
-    // // Deploy the NexLabs token, 3 index tokens, and 3 reward tokens for testing
-    // function deployTokens() internal {
-    //     // Deploy the NexLabs token
-    //     nexLabsToken = new MockERC20("NexLabs Token", "NEX");
-
-    //     // Mint initial supply of NexLabs tokens to the contract
-    //     nexLabsToken.mint(address(this), 1e24); // 1 million NEX tokens to the contract
-
-    //     // Deploy index tokens and reward tokens
-    //     for (uint256 i = 0; i < 3; i++) {
-    //         // Deploy index tokens
-    //         MockERC20 indexToken = new MockERC20(
-    //             string(abi.encodePacked("Index Token ", uint8(i + 1))), string(abi.encodePacked("IDX", uint8(i + 1)))
-    //         );
-    //         indexTokens.push(indexToken);
-
-    //         // Mint initial supply of index tokens to the contract
-    //         indexToken.mint(address(this), 1e24); // 1 million tokens
-
-    //         // Deploy reward tokens
-    //         MockERC20 rewardToken = new MockERC20(
-    //             string(abi.encodePacked("Reward Token ", uint8(i + 1))), string(abi.encodePacked("RWD", uint8(i + 1)))
-    //         );
-    //         rewardTokens.push(rewardToken);
-
-    //         // Mint initial supply of reward tokens to the contract
-    //         rewardToken.mint(address(this), 1e24); // 1 million token
-    //         console.log("MockERC20 Index Token deployed at: ", address(indexTokens[i]));
-    //     }
-    // }
-
     // Add liquidity for each index token (paired with WETH) on Uniswap V3
     function addLiquidityToAllPools() internal {
         for (uint256 i = 0; i < indexTokens.length; i++) {
@@ -184,20 +156,28 @@ contract FeeManagerWithNexStakingTest is Test {
         require(wethBalance >= 5e18, "Not enough WETH");
         require(indexTokenBalance >= 1000e18, "Not enough index tokens");
 
+        // Determine token ordering: Uniswap requires token0 < token1 by address
+        address token0 = address(weth) < address(indexToken) ? address(weth) : address(indexToken);
+        address token1 = address(weth) > address(indexToken) ? address(weth) : address(indexToken);
+
+        // Log the token order
+        console.log("Token0: ", token0);
+        console.log("Token1: ", token1);
+
         // Encode initial price: Assuming 1 WETH = 1000 index tokens
-        uint160 initialPrice = encodePriceSqrt(1, 1000);
+        uint160 initialPrice = encodePriceSqrt(1000, 1);
         console.log("Initial price sqrt: ", uint256(initialPrice));
 
         // Check if the pool already exists using Uniswap V3 factory
-        address pool = IUniswapV3Factory(uniswapV3Factory).getPool(address(indexToken), address(weth), 3000);
+        address pool = IUniswapV3Factory(uniswapV3Factory).getPool(token0, token1, 3000);
 
         if (pool == address(0)) {
             console.log("Pool does not exist, creating and initializing pool");
 
             // Create and initialize the pool if it doesn't exist
             INonfungiblePositionManager(nonfungiblePositionManager).createAndInitializePoolIfNecessary(
-                address(indexToken),
-                address(weth),
+                token0,
+                token1,
                 3000, // Fee tier
                 initialPrice // Assuming 1 WETH = 1000 index tokens
             );
@@ -210,11 +190,11 @@ contract FeeManagerWithNexStakingTest is Test {
 
         // Define pool parameters for liquidity
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-            token0: address(indexToken),
-            token1: address(weth),
+            token0: token0,
+            token1: token1,
             fee: 3000, // Pool fee of 0.3%
-            tickLower: (MIN_TICK / TICK_SPACING) * TICK_SPACING, // Min tick for liquidity range
-            tickUpper: (MAX_TICK / TICK_SPACING) * TICK_SPACING, // Max tick for liquidity range
+            tickLower: getMinTick(3000), // Min tick for liquidity range
+            tickUpper: getMaxTick(3000), // Max tick for liquidity range
             amount0Desired: 1000e18, // 1000 index tokens
             amount1Desired: 5e18, // 5 WETH
             amount0Min: 0,
@@ -242,10 +222,48 @@ contract FeeManagerWithNexStakingTest is Test {
         deal(address(indexTokens[0]), address(this), 1000e18); // Deal 1000 index tokens to the test account
         indexTokens[0].approve(address(nexStaking), 1000e18);
 
+        // Get the associated vault for the token
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+
+        indexTokens[0].approve(vault, 1000e18);
+
         // Stake 500 index tokens
         nexStaking.stake(address(indexTokens[0]), 500e18);
         assertGt(nexStaking.getUserShares(address(this), address(indexTokens[0])), 0, "Staking failed");
     }
+
+    // Test unstaking tokens from NexStaking
+    function testUnstakeTokensFromNexStaking() public {
+        // Mint index tokens and stake them first
+        deal(address(indexTokens[0]), address(this), 1000e18);
+        indexTokens[0].approve(address(nexStaking), 1000e18);
+
+        // Get the associated vault for the token
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+
+        // Approve vault for handling the staked tokens
+        indexTokens[0].approve(vault, 1000e18); // Approve 1000 tokens for vault to handle
+
+        nexStaking.stake(address(indexTokens[0]), 500e18);
+
+        // Now unstake 250 tokens
+        nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), 250e18);
+        assertEq(indexTokens[0].balanceOf(address(this)), 250e18, "Unstaking failed");
+    }
+
+    // // Test staking in NexStaking
+    // function testStakeTokensInNexStaking() public {
+    //     // Mint index tokens to test account and approve for staking
+    //     deal(address(indexTokens[0]), address(this), 1000e18); // Deal 1000 index tokens to the test account
+    //     indexTokens[0].approve(address(nexStaking), 1000e18);
+
+    //     address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+    //     indexTokens[0].approve(vault, 1000e18);
+
+    //     // Stake 500 index tokens
+    //     nexStaking.stake(address(indexTokens[0]), 500e18);
+    //     assertGt(nexStaking.getUserShares(address(this), address(indexTokens[0])), 0, "Staking failed");
+    // }
 
     // Test reward swapping from FeeManager
     function testSwapRewardTokensToWETH() public {
@@ -262,17 +280,17 @@ contract FeeManagerWithNexStakingTest is Test {
         assertGt(wethBalanceAfter, 0, "WETH balance should increase after swaps");
     }
 
-    // Test unstaking tokens from NexStaking
-    function testUnstakeTokensFromNexStaking() public {
-        // Mint index tokens and stake them first
-        deal(address(indexTokens[0]), address(this), 1000e18);
-        indexTokens[0].approve(address(nexStaking), 1000e18);
-        nexStaking.stake(address(indexTokens[0]), 500e18);
+    // // Test unstaking tokens from NexStaking
+    // function testUnstakeTokensFromNexStaking() public {
+    //     // Mint index tokens and stake them first
+    //     deal(address(indexTokens[0]), address(this), 1000e18);
+    //     indexTokens[0].approve(address(nexStaking), 1000e18);
+    //     nexStaking.stake(address(indexTokens[0]), 500e18);
 
-        // Now unstake 250 tokens
-        nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), 250e18);
-        assertEq(indexTokens[0].balanceOf(address(this)), 250e18, "Unstaking failed");
-    }
+    //     // Now unstake 250 tokens
+    //     nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), 250e18);
+    //     assertEq(indexTokens[0].balanceOf(address(this)), 250e18, "Unstaking failed");
+    // }
 
     // Helper to convert an array of IERC20 tokens to an array of addresses
     function addressArray(IERC20[] memory tokens) internal pure returns (address[] memory) {
@@ -299,24 +317,6 @@ contract FeeManagerWithNexStakingTest is Test {
             z = 1;
         }
     }
-
-    // function encodePriceSqrt(uint256 reserve1, uint256 reserve0) public pure returns (uint160) {
-    //     uint256 sqrtPriceX96 = sqrt((reserve1 * 2 ** 192) / reserve0);
-    //     return uint160(sqrtPriceX96);
-    // }
-
-    // function sqrt(uint256 y) public pure returns (uint256 z) {
-    //     if (y > 3) {
-    //         z = y;
-    //         uint256 x = y / 2 + 1;
-    //         while (x < z) {
-    //             z = x;
-    //             x = (y / x + x) / 2;
-    //         }
-    //     } else if (y != 0) {
-    //         z = 1;
-    //     }
-    // }
 
     function getMinTick(int24 tickSpacing) public pure returns (int24) {
         return int24((int256(-887272) / int256(tickSpacing) + 1) * int256(tickSpacing));

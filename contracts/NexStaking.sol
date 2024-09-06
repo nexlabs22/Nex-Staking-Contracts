@@ -99,6 +99,8 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
 
         IERC20(tokenAddress).safeTransferFrom(msg.sender, owner(), fee);
         address vault = tokenAddressToVaultAddress[tokenAddress];
+
+        IERC20(tokenAddress).approve(vault, amountAfterFee);
         uint256 shares = ERC4626(vault).deposit(amountAfterFee, msg.sender);
 
         if (position.stakeAmount > 0) {

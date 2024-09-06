@@ -11,6 +11,7 @@ library SwapHelpers {
         internal
         returns (uint256 amountOut)
     {
+        IERC20(tokenIn).approve(address(uniswapRouter), amountIn);
         ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
             tokenIn: tokenIn,
             tokenOut: tokenOut,

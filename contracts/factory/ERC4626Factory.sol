@@ -7,16 +7,16 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/
 
 import {ERC4626Vault} from "./ERC4626Vault.sol";
 
-contract ERC4626Factory is OwnableUpgradeable {
+contract ERC4626Factory {
     event VaultCreated(address indexed vault, address indexed underlyingAsset, string name, string symbol);
 
-    function initialize() public initializer {
-        __Ownable_init(msg.sender);
-    }
+    // function initialize() public initializer {
+    //     __Ownable_init(msg.sender);
+    // }
 
     // constructor() {}
 
-    function createERC4626Vault(address _underlyingAsset) external onlyOwner returns (address) {
+    function createERC4626Vault(address _underlyingAsset) external /*onlyOwner*/ returns (address) {
         require(_underlyingAsset != address(0), "Invalid underlying asset address");
 
         string memory symbol = ERC20(_underlyingAsset).symbol();

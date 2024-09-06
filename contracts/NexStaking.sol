@@ -6,15 +6,16 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+// import {ReentrancyGuard} from "@openzeppelin/contracts-upgradeable/contracts/utils/ReentrancyGuard.sol";
 import {ReentrancyGuardUpgradeable} from
     "@openzeppelin/contracts-upgradeable/contracts/utils/ReentrancyGuardUpgradeable.sol";
-
+import {ProposableOwnableUpgradeable} from "./proposable/ProposableOwnableUpgradeable.sol";
 import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
 import {CalculationHelpers} from "./libraries/CalculationHelpers.sol";
 import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 
-contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     ERC4626Factory public erc4626Factory;
@@ -39,7 +40,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     mapping(address => bool) public supportedRewardTokens;
     mapping(address => address) public tokenAddressToVaultAddress;
     mapping(address => uint256) public numberOfStakersByTokenAddress;
-    mapping(address => mapping(address => StakePositions)) public _positions;
+    mapping(address => mapping(address => StakePositions)) public positions;
 
     event Staked(
         address indexed user,
@@ -72,7 +73,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         address _uniswapV3Router,
         address _weth,
         uint8 _feePercent
-    ) public initializer {
+    ) external initializer {
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
 
@@ -90,7 +91,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     function stake(address tokenAddress, uint256 amount) external nonReentrant {
-        StakePositions storage position = _positions[msg.sender][tokenAddress];
+        StakePositions storage position = positions[msg.sender][tokenAddress];
         require(tokenAddress != address(0) && supportedTokens[tokenAddress], "Token not supported for staking.");
         require(amount > 0, "Staking amount must be greater than zero.");
 
@@ -103,7 +104,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         if (position.stakeAmount > 0) {
             position.stakeAmount += amountAfterFee;
         } else {
-            _positions[msg.sender][tokenAddress] = StakePositions({
+            positions[msg.sender][tokenAddress] = StakePositions({
                 owner: msg.sender,
                 stakeToken: tokenAddress,
                 vaultToken: vault,
@@ -118,7 +119,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     function unstake(address tokenAddress, address rewardTokenAddress, uint256 amount) external nonReentrant {
-        StakePositions storage position = _positions[msg.sender][tokenAddress];
+        StakePositions storage position = positions[msg.sender][tokenAddress];
         require(position.owner == msg.sender, "You are not the owner of this position.");
         require(
             supportedTokens[tokenAddress] == true && supportedRewardTokens[rewardTokenAddress] == true,
@@ -129,7 +130,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
         address vault = tokenAddressToVaultAddress[tokenAddress];
         uint256 sharesToRedeem = ERC4626(vault).convertToShares(amount);
-        require(sharesToRedeem > 0, "No shares to redeem for the requested amount.");
+        // require(sharesToRedeem > 0, "No shares to redeem for the requested amount.");
 
         position.stakeAmount -= amount;
         // uint256 shares = ERC4626(vault).balanceOf(msg.sender);
@@ -173,6 +174,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     ) internal {
         for (uint256 i = 0; i < _indexTokensAddresses.length; i++) {
             address vault = erc4626Factory.createERC4626Vault(_indexTokensAddresses[i]);
+            require(vault != address(0), "Invalid vault address");
             tokenAddressToVaultAddress[_indexTokensAddresses[i]] = vault;
             supportedTokens[_indexTokensAddresses[i]] = true;
             tokenSwapVersion[_indexTokensAddresses[i]] = _swapVersions[i];

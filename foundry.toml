@@ -11,6 +11,11 @@ out = 'out'
 libs = ['lib']
 test = 'test'
 cache_path = 'cache_forge'
+# solc_version = "0.8.26"          # Default version for your contracts
+
+# [profile.default.overrides]
+# "lib/v3-periphery" = { version = "0.7.6" } # Uniswap V3 periphery uses Solidity 0.7.6
+# "lib/v3-core" = { version = "0.7.6" }
 
 remappings = [
     "@openzeppelin/contract/=lib/openzeppelin-contracts",

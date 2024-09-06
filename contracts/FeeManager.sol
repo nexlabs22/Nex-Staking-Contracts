@@ -75,13 +75,13 @@ contract FeeManager is OwnableUpgradeable {
         _distributeWETHToPools(wethForStaking);
     }
 
-    /// @dev This function swaps all the reward tokens held by FeeManager into WETH
     function _swapRewardTokensToWETH() internal {
         for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
             uint256 tokenBalance = IERC20(rewardTokensAddresses[i]).balanceOf(address(this));
             if (tokenBalance > 0) {
-                uint256 swappedAmount =
-                    SwapHelpers.swapTokens(routerV3, rewardTokensAddresses[i], address(weth), tokenBalance);
+                uint256 swappedAmount = swapTokens(routerV3, rewardTokensAddresses[i], address(weth), tokenBalance);
+                // uint256 swappedAmount =
+                //     SwapHelpers.swapTokens(routerV3, rewardTokensAddresses[i], address(weth), tokenBalance);
                 emit TokensSwapped(rewardTokensAddresses[i], address(weth), tokenBalance, swappedAmount);
             }
         }
@@ -94,12 +94,11 @@ contract FeeManager is OwnableUpgradeable {
         emit TransferToOwner(swappedAmount, block.timestamp);
     }
 
-    /// @dev This function distributes WETH to all pools based on their calculated weight
     function _distributeWETHToPools(uint256 wethForStaking) internal {
         uint256[] memory poolWeights = calculateWeightOfPools();
 
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
-            address vault = nexStaking.tokenAddressToVaultAddress(poolTokensAddresses[i]);
+            address vault = nexStaking.tokenAddressToVaultAddress(poolTokensAddresses[i]); // Getting the vault address
 
             uint256 wethAmountForPool = (wethForStaking * poolWeights[i]) / 1e18;
             if (wethAmountForPool == 0) {
@@ -107,11 +106,9 @@ contract FeeManager is OwnableUpgradeable {
                 continue;
             }
 
-            // Swap WETH to the pool's index token
-            uint256 tokenAmountForPool =
-                SwapHelpers.swapTokens(routerV3, address(weth), poolTokensAddresses[i], wethAmountForPool);
-
-            // Approve and transfer the converted amount to the pool's vault
+            // uint256 tokenAmountForPool =
+            //     SwapHelpers.swapTokens(routerV3, address(weth), poolTokensAddresses[i], wethAmountForPool);
+            uint256 tokenAmountForPool = swapTokens(routerV3, address(weth), poolTokensAddresses[i], wethAmountForPool);
             IERC20(poolTokensAddresses[i]).approve(vault, tokenAmountForPool);
             IERC20(poolTokensAddresses[i]).safeTransfer(vault, tokenAmountForPool);
 
@@ -119,7 +116,6 @@ contract FeeManager is OwnableUpgradeable {
         }
     }
 
-    /// @dev Calculates the weights of all pools relative to the total value in all pools
     function calculateWeightOfPools() public view returns (uint256[] memory) {
         uint256 totalValueAcrossAllPools = getPortfolioBalance();
         uint256[] memory weights = new uint256[](poolTokensAddresses.length);
@@ -141,7 +137,6 @@ contract FeeManager is OwnableUpgradeable {
         return weights;
     }
 
-    /// @dev Returns the total value of all assets in the pools in terms of WETH
     function getPortfolioBalance() public view returns (uint256 totalValue) {
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
             address tokenAddress = poolTokensAddresses[i];
@@ -161,7 +156,24 @@ contract FeeManager is OwnableUpgradeable {
         return totalValue;
     }
 
-    /// @dev Gets the amount out for token swaps between different versions (V2 and V3)
+    function swapTokens(ISwapRouter uniswapRouter, address tokenIn, address tokenOut, uint256 amountIn)
+        internal
+        returns (uint256 amountOut)
+    {
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
+            fee: 3000,
+            recipient: address(this),
+            deadline: block.timestamp + 300,
+            amountIn: amountIn,
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
+
+        amountOut = uniswapRouter.exactInputSingle(params);
+    }
+
     function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn, uint8 _swapVersion)
         public
         view

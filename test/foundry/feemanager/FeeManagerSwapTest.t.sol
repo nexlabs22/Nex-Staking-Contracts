@@ -25,14 +25,13 @@ contract FeeManagerSwapForkTest is Test {
 
     uint256 mainnetFork;
 
-    // Uniswap V3 Router on Mainnet
     address uniswapV3Router = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
     address wethAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address usdcAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    // address usdcAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address unsiwapV2Router = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
     address uniswapV3FactoryAddress = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
-    address rewardToken1Address = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599; // Use WBTC as reward token
-    address rewardToken2Address = 0x514910771AF9Ca656af840dff83E8264EcF986CA; // Use LINK as reward token
+    // address rewardToken1Address = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599; // Use WBTC as reward token
+    // address rewardToken2Address = 0x514910771AF9Ca656af840dff83E8264EcF986CA; // Use LINK as reward token
 
     INonfungiblePositionManager nonfungiblePositionManager =
         INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
@@ -44,6 +43,9 @@ contract FeeManagerSwapForkTest is Test {
     IERC20[] indexTokens;
     IERC20[] rewardTokens;
 
+    uint256 public initialBalance = 1000e18;
+    // uint256 public initialContractBalance = initialBalance
+
     string MAINNET_RPC_URL = vm.envString("MAINNET_RPC_URL");
 
     function setUp() public {
@@ -51,25 +53,69 @@ contract FeeManagerSwapForkTest is Test {
         mainnetFork = vm.createFork(MAINNET_RPC_URL);
         vm.selectFork(mainnetFork);
 
+        deal(address(this), 10000 ether);
+
         // Initialize Uniswap V3 Router and Tokens
         swapRouterV3 = ISwapRouter(uniswapV3Router);
         weth = IERC20(wethAddress);
-        usdc = IERC20(usdcAddress);
-        rewardToken1 = IERC20(rewardToken1Address);
-        rewardToken2 = IERC20(rewardToken2Address);
+        // usdc = IERC20(usdcAddress);
+        // rewardToken1 = IERC20(rewardToken1Address);
+        // rewardToken2 = IERC20(rewardToken2Address);
+        deployTokens();
 
         // Deploy the contracts and initialize them
         deployAndInitializeContracts();
 
         // After contracts are deployed and initialized, mint tokens
-        mintTokensForContracts();
+        // mintTokensForContracts();
 
         // Approve tokens for FeeManager to perform swaps
-        approveAllTokens();
+        // approveAllTokens();
 
         addLiquidityToAllPools();
 
         console.log("Setup complete.");
+    }
+
+    function deployTokens() internal {
+        // Deploy the NexLabs token (MockERC20)
+        nexLabsToken = new MockERC20("NexLabs Token", "NEX", 18);
+        usdc = new MockERC20("USD Coin", "USDC", 6);
+
+        // Mint an initial supply of NexLabs tokens to the contract
+        nexLabsToken.mint(address(this), 1e24); // 1 million NEX tokens to the contract
+        deal(address(usdc), address(this), 1e24);
+
+        // Deploy index tokens and reward tokens with specific parameters
+        for (uint256 i = 0; i < 3; i++) {
+            // Deploy index tokens
+            MockERC20 indexToken = new MockERC20(
+                string(abi.encodePacked("Index Token ", uint8(i + 1))),
+                string(abi.encodePacked("IDX", uint8(i + 1))),
+                18
+            );
+            indexTokens.push(indexToken);
+
+            // Mint initial supply of index tokens to the contract
+            indexToken.mint(address(this), 100000e24); // 1 million index tokens
+            indexToken.mint(user, 100000e24); // 1 million index tokens
+
+            // Deploy reward tokens
+            MockERC20 rewardToken = new MockERC20(
+                string(abi.encodePacked("Reward Token ", uint8(i + 1))),
+                string(abi.encodePacked("RWD", uint8(i + 1))),
+                18
+            );
+            rewardTokens.push(rewardToken);
+
+            // Mint initial supply of reward tokens to the contract
+            rewardToken.mint(address(this), 1e24); // 1 million reward tokens
+            rewardToken.mint(user, 1e24); // 1 million reward tokens
+
+            // Log the token addresses
+            console.log("Index Token ", i, " deployed at: ", address(indexToken));
+            console.log("Reward Token ", i, " deployed at: ", address(rewardToken));
+        }
     }
 
     function deployAndInitializeContracts() internal {
@@ -81,9 +127,10 @@ contract FeeManagerSwapForkTest is Test {
         erc4626Factory = new ERC4626Factory();
         console.log("ERC4626Factory deployed");
 
-        nexLabsToken = new MockERC20("NexLabs Token", "NEX");
+        nexLabsToken = new MockERC20("NexLabs Token", "NEX", 18);
 
-        // Initialize NexStaking contract
+        // vm.startBroadcast(owner);
+
         nexStaking.initialize(
             address(nexLabsToken), // NexLabs token
             addressArray(indexTokens), // Array of index tokens
@@ -111,57 +158,59 @@ contract FeeManagerSwapForkTest is Test {
             1 // Threshold (in WETH)
         );
 
+        // vm.stopBroadcast();
+
         console.log("FeeManager initialized at address: ", address(feeManager));
         console.log("Owner address", owner);
     }
 
-    function mintTokensForContracts() internal {
-        // Mint an initial supply of NexLabs tokens to the contract and user
-        nexLabsToken.mint(address(this), 1e24); // 1 million NEX tokens to the contract
-        nexLabsToken.mint(user, 1e24); // 1 million NEX tokens to the user
+    // function mintTokensForContracts() internal {
+    //     // Mint an initial supply of NexLabs tokens to the contract and user
+    //     nexLabsToken.mint(address(this), 1e24); // 1 million NEX tokens to the contract
+    //     nexLabsToken.mint(user, 1e24); // 1 million NEX tokens to the user
 
-        // Deploy index tokens and reward tokens
-        for (uint256 i = 0; i < 3; i++) {
-            // Deploy index tokens
-            MockERC20 indexToken = new MockERC20(
-                string(abi.encodePacked("Index Token ", uint8(i + 1))), string(abi.encodePacked("IDX", uint8(i + 1)))
-            );
-            indexTokens.push(indexToken);
+    //     // Deploy index tokens and reward tokens
+    //     for (uint256 i = 0; i < 3; i++) {
+    //         // Deploy index tokens
+    //         MockERC20 indexToken = new MockERC20(
+    //             string(abi.encodePacked("Index Token ", uint8(i + 1))), string(abi.encodePacked("IDX", uint8(i + 1)))
+    //         );
+    //         indexTokens.push(indexToken);
 
-            // **Increase the minted amount** to ensure we have enough for liquidity operations
-            indexToken.mint(address(feeManager), 20000e18); // Mint 2000 tokens to FeeManager
-            indexToken.mint(user, 20000e18); // Mint 2000 tokens to user
-            indexToken.mint(address(nexStaking), 20000e18); // Mint 2000 tokens to NexStaking
-            indexToken.mint(address(this), 2000e18);
+    //         // **Increase the minted amount** to ensure we have enough for liquidity operations
+    //         indexToken.mint(address(feeManager), 20000e18); // Mint 2000 tokens to FeeManager
+    //         indexToken.mint(user, 20000e18); // Mint 2000 tokens to user
+    //         indexToken.mint(address(nexStaking), 20000e18); // Mint 2000 tokens to NexStaking
+    //         indexToken.mint(address(this), 2000e18);
 
-            // Deploy reward tokens
-            MockERC20 rewardToken = new MockERC20(
-                string(abi.encodePacked("Reward Token ", uint8(i + 1))), string(abi.encodePacked("RWD", uint8(i + 1)))
-            );
-            rewardTokens.push(rewardToken);
+    //         // Deploy reward tokens
+    //         MockERC20 rewardToken = new MockERC20(
+    //             string(abi.encodePacked("Reward Token ", uint8(i + 1))), string(abi.encodePacked("RWD", uint8(i + 1)))
+    //         );
+    //         rewardTokens.push(rewardToken);
 
-            rewardToken.mint(address(feeManager), 200e18); // Mint 200 reward tokens to FeeManager
+    //         rewardToken.mint(address(feeManager), 200e18); // Mint 200 reward tokens to FeeManager
 
-            // Log the token addresses
-            console.log("Index Token ", i, " deployed at: ", address(indexToken));
-            console.log("Reward Token ", i, " deployed at: ", address(rewardToken));
-        }
+    //         // Log the token addresses
+    //         console.log("Index Token ", i, " deployed at: ", address(indexToken));
+    //         console.log("Reward Token ", i, " deployed at: ", address(rewardToken));
+    //     }
 
-        deal(rewardToken1Address, address(feeManager), 10e18); // 1 WBTC
-        deal(rewardToken2Address, address(feeManager), 500e18); // 100 LINK
-    }
+    //     deal(rewardToken1Address, address(feeManager), 10e18); // 1 WBTC
+    //     deal(rewardToken2Address, address(feeManager), 500e18); // 100 LINK
+    // }
 
-    function approveAllTokens() internal {
-        for (uint256 i = 0; i < indexTokens.length; i++) {
-            indexTokens[i].approve(address(nexStaking), 20000e18);
-            indexTokens[i].approve(address(feeManager), 20000e18);
-        }
-        for (uint256 i = 0; i < rewardTokens.length; i++) {
-            rewardTokens[i].approve(address(feeManager), 1000e18);
-        }
-        weth.approve(address(feeManager), 10000e18);
-        usdc.approve(address(feeManager), 10000e18);
-    }
+    // function approveAllTokens() internal {
+    //     for (uint256 i = 0; i < indexTokens.length; i++) {
+    //         indexTokens[i].approve(address(nexStaking), 20000e18);
+    //         indexTokens[i].approve(address(feeManager), 20000e18);
+    //     }
+    //     for (uint256 i = 0; i < rewardTokens.length; i++) {
+    //         rewardTokens[i].approve(address(feeManager), 1000e18);
+    //     }
+    //     weth.approve(address(feeManager), 10000e18);
+    //     usdc.approve(address(feeManager), 10000e18);
+    // }
 
     function testSwapRewardTokensToWETH() public {
         // deal()
@@ -194,14 +243,17 @@ contract FeeManagerSwapForkTest is Test {
         // Simulate WETH allocation to FeeManager
         deal(wethAddress, address(feeManager), 10e18); // Allocate 10 WETH
 
-        uint256 initialUSDCBalance = usdc.balanceOf(owner);
+        uint256 initialUSDCBalance = usdc.balanceOf(address(this));
+        console.log("USDC balance before swap", initialUSDCBalance);
 
         // Call function to swap WETH to USDC and transfer to owner
         feeManager._swapWETHToUSDCAndTransfer(5e18); // Swap 5 WETH to USDC
+        // feeManager.checkAndTransfer();
 
         // Check USDC balance after swap
-        uint256 usdcBalanceAfter = usdc.balanceOf(owner);
+        uint256 usdcBalanceAfter = usdc.balanceOf(address(this));
         assertGt(usdcBalanceAfter, initialUSDCBalance, "USDC balance did not increase after swap");
+        // console.log("USDC Differenc: ", in);
 
         // Log the output for verification
         console.log("USDC balance after swap: ", usdcBalanceAfter);
@@ -212,7 +264,8 @@ contract FeeManagerSwapForkTest is Test {
         deal(wethAddress, address(feeManager), 10e18); // Allocate 10 WETH
 
         // Distribute WETH to staking pools
-        feeManager._distributeWETHToPools(5e18); // Distribute 5 WETH
+        // feeManager._distributeWETHToPools(5e18); // Distribute 5 WETH
+        feeManager.checkAndTransfer();
 
         // Check WETH balance after distribution
         uint256 remainingWETHBalance = weth.balanceOf(address(feeManager));
@@ -227,10 +280,10 @@ contract FeeManagerSwapForkTest is Test {
             addLiquidity(indexTokens[i]);
         }
 
-        addLiquidity(IERC20(rewardToken1Address)); // Example amounts
+        // addLiquidity(IERC20(rewardToken1Address)); // Example amounts
 
         // Add liquidity for LINK/WETH pair
-        addLiquidity(IERC20(rewardToken1Address)); // Example amounts
+        // addLiquidity(IERC20(rewardToken1Address)); // Example amounts
 
         // Add liquidity for WETH/USDC pair
         addLiquidity(IERC20(usdc));
@@ -250,19 +303,19 @@ contract FeeManagerSwapForkTest is Test {
         // address token1 = address(weth);
 
         require(wethBalance >= 5e18, "Not enough WETH for liquidity");
-        // require(indexTokenBalance >= 1000e18, "Not enough index tokens for liquidity");
+        require(indexTokenBalance >= 1000e18, "Not enough index tokens for liquidity");
 
         // Add liquidity
         console.log("Adding liquidity...");
         address token0 = address(weth) < address(indexToken) ? address(weth) : address(indexToken);
         address token1 = address(weth) > address(indexToken) ? address(weth) : address(indexToken);
 
-        // Encode initial price: Assuming 1 WETH = 1000 index tokens
-        uint160 initialPrice = encodePriceSqrt(1000, 1);
-        console.log("Initial price sqrt: ", uint256(initialPrice));
+        console.log("Token0: ", token0);
+        console.log("Token1: ", token1);
 
-        weth.approve(address(nonfungiblePositionManager), type(uint256).max);
-        indexToken.approve(address(nonfungiblePositionManager), type(uint256).max);
+        // Encode initial price: Assuming 1 WETH = 1000 index tokens
+        uint160 initialPrice = encodePriceSqrt(100, 1);
+        console.log("Initial price sqrt: ", uint256(initialPrice));
 
         address pool = IUniswapV3Factory(uniswapV3Factory).getPool(token0, token1, 3000);
 
@@ -280,13 +333,18 @@ contract FeeManagerSwapForkTest is Test {
             console.log("Pool already exists: ", pool);
         }
 
+        IERC20(token0).approve(address(nonfungiblePositionManager), type(uint256).max);
+        IERC20(token1).approve(address(nonfungiblePositionManager), type(uint256).max);
+        // weth.approve(address(nonfungiblePositionManager), type(uint256).max);
+        // indexToken.approve(address(nonfungiblePositionManager), type(uint256).max);
+
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
             token0: token0,
             token1: token1,
             fee: 3000, // Pool fee of 0.3%
             tickLower: getMinTick(3000), // Min tick for liquidity range
             tickUpper: getMaxTick(3000), // Max tick for liquidity range
-            amount0Desired: 1000e18, // 1000 index tokens
+            amount0Desired: 100e18, // 1000 index tokens
             amount1Desired: 5e18, // 5 WETH
             amount0Min: 0,
             amount1Min: 0,

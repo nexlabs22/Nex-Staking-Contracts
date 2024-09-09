@@ -27,6 +27,8 @@ contract FeeManager is OwnableUpgradeable {
     address[] public rewardTokensAddresses;
     address[] public poolTokensAddresses;
 
+    mapping(address => uint8) public tokenSwapVersion;
+
     event RewardsDistributed(address indexed tokenAddress, uint256 amount, uint256 timestamp);
     event RewardDistributionSkipped(address indexed tokenAddress, string reason);
     event TransferToOwner(uint256 indexed usdcAmount, uint256 timestamp);
@@ -36,6 +38,7 @@ contract FeeManager is OwnableUpgradeable {
         NexStaking _nexStagingAddress,
         address[] memory _indexTokensAddresses,
         address[] memory _rewardTokensAddresses,
+        uint8[] memory _swapVersions,
         address _uniswapRouter,
         address _uniswapV2Router,
         address _weth,
@@ -51,35 +54,39 @@ contract FeeManager is OwnableUpgradeable {
         usdc = IERC20(_usdc);
         threshold = _threshold * 10 ** 18;
 
+        require(_indexTokensAddresses.length == _swapVersions.length, "Swap versions array length mismatch");
+
         rewardTokensAddresses = _rewardTokensAddresses;
         // poolTokensAddresses = nexStaking.poolTokensAddresses();
         poolTokensAddresses = _indexTokensAddresses;
+
+        _setSwapVersion(_indexTokensAddresses, _swapVersions);
     }
 
     /// @dev This function checks and processes rewards distribution based on threshold
-    function checkAndTransfer() external onlyOwner {
+    function checkAndTransfer() external {
         // Swap all reward tokens to WETH (ETH)
         _swapRewardTokensToWETH();
 
-        // uint256 wethBalance = weth.balanceOf(address(this));
-        // require(wethBalance >= threshold, "WETH balance is below the threshold");
+        uint256 wethBalance = weth.balanceOf(address(this));
+        require(wethBalance >= threshold, "WETH balance is below the threshold");
 
         // // Split the WETH balance
-        // uint256 wethForOwner = wethBalance / 2;
-        // uint256 wethForStaking = wethBalance - wethForOwner;
+        uint256 wethForOwner = wethBalance / 2;
+        uint256 wethForStaking = wethBalance - wethForOwner;
 
         // Swap half of WETH to USDC and transfer to the owner
-        // _swapWETHToUSDCAndTransfer(wethForOwner);
+        _swapWETHToUSDCAndTransfer(wethForOwner);
 
         // Distribute the other half of WETH to the staking pools based on pool weights
-        // _distributeWETHToPools(wethForStaking);
+        _distributeWETHToPools(wethForStaking);
     }
 
-    function _swapRewardTokensToWETH() internal {
+    function _swapRewardTokensToWETH() public {
         for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
             uint256 tokenBalance = IERC20(rewardTokensAddresses[i]).balanceOf(address(this));
             if (tokenBalance > 0) {
-                uint256 swappedAmount = swapTokens(routerV3, rewardTokensAddresses[i], address(weth), tokenBalance);
+                uint256 swappedAmount = swapTokens(rewardTokensAddresses[i], address(weth), tokenBalance, address(this));
                 // uint256 swappedAmount =
                 //     SwapHelpers.swapTokens(routerV3, rewardTokensAddresses[i], address(weth), tokenBalance);
                 emit TokensSwapped(rewardTokensAddresses[i], address(weth), tokenBalance, swappedAmount);
@@ -88,13 +95,13 @@ contract FeeManager is OwnableUpgradeable {
     }
 
     /// @dev This function swaps WETH to USDC and transfers to the contract owner
-    function _swapWETHToUSDCAndTransfer(uint256 wethAmount) internal {
+    function _swapWETHToUSDCAndTransfer(uint256 wethAmount) public {
         uint256 swappedAmount = SwapHelpers.swapTokens(routerV3, address(weth), address(usdc), wethAmount);
         usdc.safeTransfer(owner(), swappedAmount);
         emit TransferToOwner(swappedAmount, block.timestamp);
     }
 
-    function _distributeWETHToPools(uint256 wethForStaking) internal {
+    function _distributeWETHToPools(uint256 wethForStaking) public {
         uint256[] memory poolWeights = calculateWeightOfPools();
 
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
@@ -107,8 +114,9 @@ contract FeeManager is OwnableUpgradeable {
             }
 
             // uint256 tokenAmountForPool =
-            //     SwapHelpers.swapTokens(routerV3, address(weth), poolTokensAddresses[i], wethAmountForPool);
-            uint256 tokenAmountForPool = swapTokens(routerV3, address(weth), poolTokensAddresses[i], wethAmountForPool);
+            //     swapTokens(routerV3, address(weth), poolTokensAddresses[i], wethAmountForPool, vault);
+            uint256 tokenAmountForPool =
+                swapTokens(address(weth), poolTokensAddresses[i], wethAmountForPool, address(this));
             IERC20(poolTokensAddresses[i]).approve(vault, tokenAmountForPool);
             IERC20(poolTokensAddresses[i]).safeTransfer(vault, tokenAmountForPool);
 
@@ -156,22 +164,28 @@ contract FeeManager is OwnableUpgradeable {
         return totalValue;
     }
 
-    function swapTokens(ISwapRouter uniswapRouter, address tokenIn, address tokenOut, uint256 amountIn)
-        internal
-        returns (uint256 amountOut)
-    {
+    function swapTokens(
+        // ISwapRouter uniswapRouter,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        address _recipient
+    ) public returns (uint256 amountOut) {
+        // IERC20(tokenIn).approve(address(uniswapRouter), amountIn);
+        IERC20(tokenIn).approve(address(routerV3), amountIn);
+
         ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
             tokenIn: tokenIn,
             tokenOut: tokenOut,
             fee: 3000,
-            recipient: address(this),
+            recipient: _recipient,
             deadline: block.timestamp + 300,
             amountIn: amountIn,
             amountOutMinimum: 0,
             sqrtPriceLimitX96: 0
         });
 
-        amountOut = uniswapRouter.exactInputSingle(params);
+        amountOut = routerV3.exactInputSingle(params);
     }
 
     function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn, uint8 _swapVersion)
@@ -202,6 +216,12 @@ contract FeeManager is OwnableUpgradeable {
         address _pool = factoryV3.getPool(tokenIn, tokenOut, 3000);
         int24 tick = OracleLibrary.getLatestTick(_pool);
         amountOut = OracleLibrary.getQuoteAtTick(tick, amountIn, tokenIn, tokenOut);
+    }
+
+    function _setSwapVersion(address[] memory _indexTokensAddresses, uint8[] memory _swapVersions) internal {
+        for (uint256 i = 0; i < _indexTokensAddresses.length; i++) {
+            tokenSwapVersion[_indexTokensAddresses[i]] = _swapVersions[i];
+        }
     }
 
     receive() external payable {}

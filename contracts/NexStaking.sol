@@ -166,6 +166,10 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
             numberOfStakersByTokenAddress[tokenAddress] -= 1;
         }
 
+        if (position.stakeAmount == 0) {
+            delete positions[msg.sender][tokenAddress];
+        }
+
         emit Unstaked(msg.sender, tokenAddress, redeemedAmount, vault, sharesToRedeem, block.timestamp);
     }
 

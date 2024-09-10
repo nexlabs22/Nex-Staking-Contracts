@@ -73,7 +73,7 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         address _uniswapV3Router,
         address _weth,
         uint8 _feePercent
-    ) external initializer {
+    ) public initializer {
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
 

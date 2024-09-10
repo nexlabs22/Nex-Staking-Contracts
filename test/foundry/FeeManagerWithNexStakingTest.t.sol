@@ -54,6 +54,11 @@
 
 //         erc4626Factory = new ERC4626Factory();
 
+//         uint8[] memory swapVersions = new uint8[](indexTokens.length);
+//         for (uint256 i = 0; i < swapVersions.length; i++) {
+//             swapVersions[i] = 3;
+//         }
+
 //         // uint8;
 //         // swapVersions[0] = 3;
 
@@ -84,6 +89,7 @@
 //             swapVersions,
 //             uniswapV3Router,
 //             unsiwapV2Router,
+//             address(uniswapV3Factory),
 //             address(weth),
 //             address(usdc),
 //             1

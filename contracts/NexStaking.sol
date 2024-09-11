@@ -6,9 +6,9 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-// import {ReentrancyGuard} from "@openzeppelin/contracts-upgradeable/contracts/utils/ReentrancyGuard.sol";
 import {ReentrancyGuardUpgradeable} from
     "@openzeppelin/contracts-upgradeable/contracts/utils/ReentrancyGuardUpgradeable.sol";
+
 import {ProposableOwnableUpgradeable} from "./proposable/ProposableOwnableUpgradeable.sol";
 import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
 import {CalculationHelpers} from "./libraries/CalculationHelpers.sol";
@@ -92,7 +92,10 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
 
     function stake(address tokenAddress, uint256 amount) external nonReentrant {
         StakePositions storage position = positions[msg.sender][tokenAddress];
-        require(tokenAddress != address(0) && supportedTokens[tokenAddress], "Token not supported for staking.");
+        require(tokenAddress != address(0), "The token address is zero address");
+        require(
+            supportedTokens[tokenAddress] || tokenAddress == address(nexLabsToken), "Token not support for staking."
+        );
         require(amount > 0, "Staking amount must be greater than zero.");
 
         (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(amount);
@@ -101,7 +104,9 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         address vault = tokenAddressToVaultAddress[tokenAddress];
 
         IERC20(tokenAddress).approve(vault, amountAfterFee);
+        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), amountAfterFee); // Transfer to NexStaking first
         uint256 shares = ERC4626(vault).deposit(amountAfterFee, msg.sender);
+        // uint256 shares = ERC4626(vault).deposit(amountAfterFee, tx.origin);
 
         if (position.stakeAmount > 0) {
             position.stakeAmount += amountAfterFee;
@@ -123,55 +128,128 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
     function unstake(address tokenAddress, address rewardTokenAddress, uint256 amount) external nonReentrant {
         StakePositions storage position = positions[msg.sender][tokenAddress];
         require(position.owner == msg.sender, "You are not the owner of this position.");
-        require(
-            supportedTokens[tokenAddress] == true && supportedRewardTokens[rewardTokenAddress] == true,
-            "UnSupported Tokens"
-        );
+        require(supportedTokens[tokenAddress] && supportedRewardTokens[rewardTokenAddress], "Unsupported tokens.");
         require(position.stakeAmount > 0, "No stake amount to unstake.");
         require(amount > 0 && amount <= position.stakeAmount, "Invalid amount to unstake.");
 
         address vault = tokenAddressToVaultAddress[tokenAddress];
+
+        // Calculate the number of shares corresponding to the amount to be unstaked
+        // uint256 maxShares = ERC4626(vault).maxRedeem(msg.sender);
         uint256 sharesToRedeem = ERC4626(vault).convertToShares(amount);
-        // require(sharesToRedeem > 0, "No shares to redeem for the requested amount.");
+        // require(sharesToRedeem <= maxShares, "Not enough shares to redeem.");
+        // require(sharesToRedeem > 0, "Not enough shares to redeem.");
 
-        position.stakeAmount -= amount;
-        // uint256 shares = ERC4626(vault).balanceOf(msg.sender);
-
+        // Redeem the assets from the vault
         uint256 redeemedAmount = ERC4626(vault).redeem(sharesToRedeem, address(this), msg.sender);
 
-        if (rewardTokenAddress == position.stakeToken) {
-            (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemedAmount);
+        // Apply a 0.3% fee on the redeemed amount
+        (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemedAmount);
+
+        // If the reward token is the same as the staked token
+        if (tokenAddress == rewardTokenAddress) {
+            // Transfer the entire amount (after fee) to the user
             IERC20(tokenAddress).safeTransfer(msg.sender, amountAfterFee);
-            IERC20(tokenAddress).safeTransfer(owner(), fee);
         } else {
+            // Split the amount into staked amount and reward amount
+            uint256 stakedAmount = amount; // The amount the user originally staked
+            uint256 rewardAmount = amountAfterFee - stakedAmount; // The rest is reward
+
+            // Step 1: Transfer staked amount to the user
+            IERC20(tokenAddress).safeTransfer(msg.sender, stakedAmount);
+
+            // Step 2: Swap the reward amount to the reward token selected by the user
             address[] memory path;
             path = new address[](3);
             path[0] = tokenAddress;
             path[1] = address(weth);
             path[2] = rewardTokenAddress;
 
-            uint256 stakedAmount = position.stakeAmount;
-            uint256 rewardAmount = redeemedAmount - stakedAmount;
+            // Swap the reward amount to the desired reward token
+            uint256 swappedRewardAmount = SwapHelpers.swapIndexToReward(routerV3, path, rewardAmount, msg.sender);
 
-            (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemedAmount);
-            IERC20(tokenAddress).safeTransfer(msg.sender, amountAfterFee);
-            IERC20(tokenAddress).safeTransfer(owner(), fee);
-
-            uint256 swappedAmount = SwapHelpers.swapIndexToReward(routerV3, path, rewardAmount, msg.sender);
-
-            emit RewardTokensSwapped(tokenAddress, rewardTokenAddress, rewardAmount, swappedAmount, msg.sender);
+            emit RewardTokensSwapped(tokenAddress, rewardTokenAddress, rewardAmount, swappedRewardAmount, msg.sender);
         }
 
+        // Transfer the fee to the contract owner
+        IERC20(tokenAddress).safeTransfer(owner(), fee);
+
+        // Clean up the user's position if they have no remaining shares
         if (ERC4626(vault).balanceOf(msg.sender) == 0) {
-            numberOfStakersByTokenAddress[tokenAddress] -= 1;
-        }
-
-        if (position.stakeAmount == 0) {
             delete positions[msg.sender][tokenAddress];
+            numberOfStakersByTokenAddress[tokenAddress] -= 1;
         }
 
         emit Unstaked(msg.sender, tokenAddress, redeemedAmount, vault, sharesToRedeem, block.timestamp);
     }
+
+    // function unstake(address tokenAddress, address rewardTokenAddress, uint256 amount) external nonReentrant {
+    //     StakePositions storage position = positions[msg.sender][tokenAddress];
+    //     require(position.owner == msg.sender, "You are not the owner of this position.");
+    //     require(
+    //         supportedTokens[tokenAddress] == true && supportedRewardTokens[rewardTokenAddress] == true,
+    //         "UnSupported Tokens"
+    //     );
+    //     require(position.stakeAmount > 0, "No stake amount to unstake.");
+    //     require(amount > 0 && amount <= position.stakeAmount, "Invalid amount to unstake.");
+
+    //     address vault = tokenAddressToVaultAddress[tokenAddress];
+    //     uint256 sharesToRedeem = ERC4626(vault).convertToShares(amount);
+    //     uint256 maxRedeemableShares = ERC4626(vault).maxRedeem(msg.sender);
+
+    //     if (sharesToRedeem > maxRedeemableShares) {
+    //         sharesToRedeem = maxRedeemableShares;
+    //     }
+
+    //     // Ensure the user can redeem the requested amount
+    //     // require(sharesToRedeem <= maxRedeemableShares, "Not enough shares to redeem.");
+    //     // require(sharesToRedeem > 0, "No shares to redeem for the requested amount.");
+    //     require(sharesToRedeem > 0, "Not enough shares to redeem.");
+
+    //     position.stakeAmount -= amount;
+    //     // uint256 stakedAmount = position.stakeAmount;
+    //     // position.stakeAmount -= amount;
+    //     // uint256 shares = ERC4626(vault).balanceOf(msg.sender);
+    //     // IERC20(tokenAddress).approve(vault, amount);
+    //     ERC4626(vault).approve(address(this), sharesToRedeem);
+    //     uint256 redeemedAmount = ERC4626(vault).redeem(sharesToRedeem, address(this), msg.sender);
+
+    //     (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemedAmount);
+    //     if (rewardTokenAddress == position.stakeToken) {
+    //         IERC20(tokenAddress).safeTransfer(msg.sender, amountAfterFee);
+    //         // IERC20(tokenAddress).safeTransfer(owner(), fee);
+    //     } else {
+    //         address[] memory path;
+    //         path = new address[](3);
+    //         path[0] = tokenAddress;
+    //         path[1] = address(weth);
+    //         path[2] = rewardTokenAddress;
+
+    //         // uint256 rewardAmount = amountAfterFee - stakedAmount;
+    //         // uint256 originalAmount = amountAfterFee - rewardAmount;
+
+    //         // uint256 rewardAmount = redeemedAmount - stakedAmount;
+
+    //         IERC20(tokenAddress).safeTransfer(msg.sender, originalAmount);
+    //         // IERC20(tokenAddress).safeTransfer(owner(), fee);
+
+    //         uint256 swappedAmount = SwapHelpers.swapIndexToReward(routerV3, path, rewardAmount, msg.sender);
+
+    //         emit RewardTokensSwapped(tokenAddress, rewardTokenAddress, amountAfterFee, swappedAmount, msg.sender);
+    //     }
+
+    //     IERC20(tokenAddress).safeTransfer(owner(), fee);
+
+    //     if (ERC4626(vault).balanceOf(msg.sender) == 0) {
+    //         delete positions[msg.sender][tokenAddress];
+    //         numberOfStakersByTokenAddress[tokenAddress] -= 1;
+    //     }
+
+    //     // if (position.stakeAmount == 0) {
+    //     // }
+
+    //     emit Unstaked(msg.sender, tokenAddress, redeemedAmount, vault, sharesToRedeem, block.timestamp);
+    // }
 
     function _initializePools(
         address[] memory _indexTokensAddresses,

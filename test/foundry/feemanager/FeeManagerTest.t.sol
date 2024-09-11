@@ -7,7 +7,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {MockERC20} from "./../mocks/MockERC20.sol";
 import {INonfungiblePositionManager} from "../../../contracts/uniswap/INonfungiblePositionManager.sol";
-import {INonfungiblePositionManager} from "../../../contracts/uniswap/INonfungiblePositionManager.sol";
 import {NexStaking} from "../../../contracts/NexStaking.sol";
 import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import {FeeManager} from "../../../contracts/FeeManager.sol";

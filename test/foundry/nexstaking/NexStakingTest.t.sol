@@ -109,6 +109,10 @@ contract NexStakingTest is Test {
         address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), 500e18);
 
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
+
         (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(500e18, 3);
 
         // Unstake all tokens and receive rewards
@@ -139,6 +143,10 @@ contract NexStakingTest is Test {
         address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), 500e18);
 
+        deal(address(indexTokens[0]), vault, 100e18);
+
+        // console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
+
         (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(250e18, 3);
 
         nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee);
@@ -167,9 +175,15 @@ contract NexStakingTest is Test {
 
         // Approve NexStaking for redeeming shares from the vault
         address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
-        ERC4626(vault).approve(address(nexStaking), 500e18);
+        ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
-        deal(address(indexTokens[0]), vault, 111e18);
+        console.log("Vault total assets: ", ERC4626(vault).totalAssets());
+
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        // deal(address(indexTokens[0]), vault, 1000e18);
+        // indexTokens[0].approve(vault, 1000e18);
+        // ERC4626(vault).deposit(1000e18, address(this));
 
         console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
 
@@ -178,6 +192,7 @@ contract NexStakingTest is Test {
         uint256 userRewardTokenBalanceBeforeUnstake = rewardTokens[1].balanceOf(user);
         uint256 stakingContractBalance = indexTokens[0].balanceOf(address(nexStaking));
 
+        console.log("User reward token balance before unstake: ", userRewardTokenBalanceBeforeUnstake);
         console.log("Staking contract balance before unstake: ", stakingContractBalance);
 
         // Unstake all tokens and receive rewards
@@ -186,48 +201,68 @@ contract NexStakingTest is Test {
         uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user);
         uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
 
+        console.log("User reward token balance after unstake: ", userRewardTokenBalanceAfterUnstake);
+        console.log("User balance after unstake: ", userBalanceAfterUnStake);
+
         assertGt(userRewardTokenBalanceAfterUnstake, userRewardTokenBalanceBeforeUnstake);
         assertGt(userBalanceAfterUnStake, userBalanceBeforeUnStake);
 
         uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
+        console.log("Remaining shares: ", remainingShares);
         assertEq(remainingShares, 0, "All shares should be redeemed");
 
         vm.stopPrank();
     }
 
-    // function testUnstakeAllTokensWithDifferentRewardToken() public {
-    //     vm.startPrank(user);
+    function testUnstakeSomeTokensWithDifferentRewardToken() public {
+        vm.startPrank(user);
 
-    //     // User stakes 500 tokens
-    //     indexTokens[0].approve(address(nexStaking), 500e18);
-    //     nexStaking.stake(address(indexTokens[0]), 500e18);
+        // User stakes 500 tokens
+        indexTokens[0].approve(address(nexStaking), 500e18);
+        nexStaking.stake(address(indexTokens[0]), 500e18);
 
-    //     uint256 userBalanceAfterStake = indexTokens[0].balanceOf(user);
+        uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-    //     // Approve NexStaking for redeeming shares from the vault
-    //     address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
-    //     ERC4626(vault).approve(address(nexStaking), 500e18);
+        // Approve NexStaking for redeeming shares from the vault
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
-    //     (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(500e18, 3);
+        console.log("Vault total assets: ", ERC4626(vault).totalAssets());
 
-    //     uint256 userRewardTokenBalanceBeforeUnstake = rewardTokens[0].balanceOf(user);
+        deal(address(indexTokens[0]), vault, 1000e18);
 
-    //     // Unstake all tokens and receive rewards
-    //     nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee);
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
 
-    //     uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[0].balanceOf(user);
+        (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(200e18, 3);
 
-    //     uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
+        uint256 userRewardTokenBalanceBeforeUnstake = rewardTokens[1].balanceOf(user);
+        uint256 stakingContractBalance = indexTokens[0].balanceOf(address(nexStaking));
 
-    //     assertGt(userRewardTokenBalanceAfterUnstake, userRewardTokenBalanceBeforeUnstake);
+        console.log("User reward token balance before unstake: ", userRewardTokenBalanceBeforeUnstake);
+        console.log("Staking contract balance before unstake: ", stakingContractBalance);
 
-    //     assertGt(userBalanceAfterUnStake, userBalanceAfterStake);
+        // Unstake all tokens and receive rewards
+        nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee);
 
-    //     uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
-    //     assertEq(remainingShares, 0, "All shares should be redeemed");
+        uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user);
+        uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
 
-    //     vm.stopPrank();
-    // }
+        console.log("User reward token balance after unstake: ", userRewardTokenBalanceAfterUnstake);
+        console.log("User balance after unstake: ", userBalanceAfterUnStake);
+
+        assertGt(userRewardTokenBalanceAfterUnstake, userRewardTokenBalanceBeforeUnstake);
+        assertGt(userBalanceAfterUnStake, userBalanceBeforeUnStake);
+
+        uint256 expectedRemainingShares = ERC4626(vault).balanceOf(user);
+        uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
+
+        console.log("Expected shares: ", expectedRemainingShares);
+        console.log("Remaining shares: ", remainingShares);
+
+        assertEq(remainingShares, expectedRemainingShares, "All shares should be redeemed");
+
+        vm.stopPrank();
+    }
 
     function testSwapIndexToReward() public {
         console.log("-----------------testSwapIndexToReward-----------------");
@@ -299,14 +334,6 @@ contract NexStakingTest is Test {
             "Reward Token 3 is incorrect (should be Index Token 2)"
         );
     }
-
-    // function testInitializeStaking() public {
-    //     assertEq(address(nexStaking.nexLabsToken()), address(nexLabsToken), "NexLabs Token is incorrect");
-    //     assertEq(nexStaking.poolTokensAddresses(0), address(indexToken1), "Index Token 1 is incorrect");
-    //     assertEq(nexStaking.poolTokensAddresses(1), address(indexToken2), "Index Token 2 is incorrect");
-    //     assertEq(nexStaking.rewardTokensAddresses(0), address(rewardToken1), "Reward Token 1 is incorrect");
-    //     assertEq(nexStaking.rewardTokensAddresses(1), address(rewardToken2), "Reward Token 2 is incorrect");
-    // }
 
     function deployTokens() internal {
         nexLabsToken = new MockERC20("NexLabs Token", "NEX", 18);
@@ -520,123 +547,4 @@ contract NexStakingTest is Test {
         }
         return addresses;
     }
-
-    // function testUnstakeTokensWithReward() public {
-    //     console.log("-----------------testUnstakeTokensWithReward-----------------");
-
-    //     // Test unstaking functionality for user1
-    //     vm.startPrank(user);
-
-    //     // User stakes 500 tokens first
-    //     indexToken1.approve(address(nexStaking), 500e18);
-    //     nexStaking.stake(address(indexToken1), 500e18);
-
-    //     // Distribute some rewards
-    //     deal(address(indexToken1), address(nexStaking.tokenAddressToVaultAddress(address(indexToken1))), 500e18);
-
-    //     // Unstake the tokens and receive rewards
-    //     nexStaking.unstake(address(indexToken1), address(rewardToken1), 250e18);
-
-    //     uint256 remainingShares = nexStaking.getUserShares(user, address(indexToken1));
-    //     assertGt(remainingShares, 0, "Shares should decrease after partial unstake");
-
-    //     vm.stopPrank();
-
-    //     console.log("-----------------testUnstakeTokensWithReward-----------------");
-    // }
-
-    // function testUnstakeAllTokens() public {
-    //     console.log("-----------------testUnstakeAllTokens-----------------");
-
-    //     // Test unstaking all tokens for user1
-    //     vm.startPrank(user);
-
-    //     // User stakes 500 tokens
-    //     indexToken1.approve(address(nexStaking), 500e18);
-    //     nexStaking.stake(address(indexToken1), 500e18);
-
-    //     (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(500e18, 3);
-
-    //     // Unstake all tokens and ensure all shares are redeemed
-    //     nexStaking.unstake(address(indexToken1), address(rewardToken1), amountAfterFee);
-
-    //     uint256 remainingShares = nexStaking.getUserShares(user, address(indexToken1));
-    //     assertEq(remainingShares, 0, "All shares should be redeemed");
-
-    //     vm.stopPrank();
-
-    //     console.log("-----------------testUnstakeAllTokens-----------------");
-    // }
-
-    // function deployTokens() internal {
-    //     // Mock tokens for staking, rewards, and NexLabsToken
-    //     nexLabsToken = new MockERC20("NexLabs Token", "NEX", 18);
-    //     indexToken1 = new MockERC20("Index Token 1", "IDX1", 18);
-    //     indexToken2 = new MockERC20("Index Token 2", "IDX2", 18);
-    //     rewardToken1 = new MockERC20("Reward Token 1", "RWD1", 18);
-    //     rewardToken2 = new MockERC20("Reward Token 2", "RWD2", 18);
-
-    //     // Mint some initial tokens for tests
-    //     nexLabsToken.mint(address(this), 1e24);
-    //     indexToken1.mint(address(this), 100000e24);
-    //     indexToken2.mint(address(this), 100000e24);
-    //     indexToken1.mint(user, 100000e24);
-    //     indexToken2.mint(user, 100000e24);
-    //     rewardToken1.mint(address(this), 100000e24);
-    //     rewardToken2.mint(address(this), 100000e24);
-
-    //     deal(address(indexToken1), user, 1000e18);
-    //     deal(address(rewardToken1), user, 1000e18);
-
-    //     indexTokens.push(indexToken1);
-    //     indexTokens.push(indexToken2);
-    //     rewardTokens.push(rewardToken1);
-    //     rewardTokens.push(rewardToken2);
-    // }
-
-    // function deployAndInitializeContracts() internal {
-    //     // Deploy NexStaking contract
-    //     nexStaking = new NexStaking();
-    //     console.log("Deploying NexStaking");
-
-    //     // Deploy ERC4626 Factory
-    //     erc4626Factory = new ERC4626Factory();
-    //     console.log("ERC4626Factory deployed");
-
-    //     uint8[] memory swapVersions = new uint8[](indexTokens.length);
-    //     for (uint256 i = 0; i < swapVersions.length; i++) {
-    //         swapVersions[i] = 3;
-    //     }
-
-    //     // Initialize NexStaking
-    //     nexStaking.initialize(
-    //         address(nexLabsToken),
-    //         addressArray(indexTokens),
-    //         addressArray(rewardTokens),
-    //         swapVersions,
-    //         address(erc4626Factory),
-    //         uniswapV3Router,
-    //         address(weth),
-    //         3
-    //     );
-
-    //     console.log("Nex Staking deployed at: ", address(nexStaking));
-
-    //     // Initialize FeeManager
-    //     feeManager = new FeeManager();
-    //     feeManager.initialize(
-    //         nexStaking,
-    //         addressArray(indexTokens),
-    //         addressArray(rewardTokens),
-    //         swapVersions,
-    //         uniswapV3Router,
-    //         unsiwapV2Router,
-    //         address(uniswapV3Factory),
-    //         address(weth),
-    //         address(rewardToken1),
-    //         1
-    //     );
-
-    //     console.log("FeeManager initialized.");
-    // }
 }

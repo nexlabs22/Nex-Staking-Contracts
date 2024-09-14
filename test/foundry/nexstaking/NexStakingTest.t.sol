@@ -29,6 +29,7 @@ contract NexStakingTest is Test {
     MockERC20 public nexLabsToken;
 
     address user = address(1);
+    address user2 = address(2);
     address owner = address(10);
 
     uint256 mainnetFork;
@@ -84,6 +85,8 @@ contract NexStakingTest is Test {
         // Test staking functionality for user1
         vm.startPrank(user);
 
+        deal(address(indexTokens[0]), user, 500e18);
+
         // User stakes 500 tokens
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
@@ -98,6 +101,8 @@ contract NexStakingTest is Test {
 
     function testUnstakeAllTokensWithSameTokenReward() public {
         vm.startPrank(user);
+
+        deal(address(indexTokens[0]), user, 500e18);
 
         // User stakes 500 tokens
         indexTokens[0].approve(address(nexStaking), 500e18);
@@ -133,6 +138,8 @@ contract NexStakingTest is Test {
 
         vm.startPrank(user);
 
+        deal(address(indexTokens[0]), user, 500e18);
+
         // User stakes 500 tokens
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
@@ -166,7 +173,7 @@ contract NexStakingTest is Test {
 
     function testUnstakeAllTokensWithDifferentRewardToken() public {
         vm.startPrank(user);
-
+        deal(address(indexTokens[0]), user, 500e18);
         // User stakes 500 tokens
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
@@ -218,6 +225,7 @@ contract NexStakingTest is Test {
         vm.startPrank(user);
 
         // User stakes 500 tokens
+        deal(address(indexTokens[0]), user, 500e18);
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
@@ -264,10 +272,352 @@ contract NexStakingTest is Test {
         vm.stopPrank();
     }
 
+    function testUnstakeAllTokensWithTwoUsersWitDifferentReward() public {
+        vm.startPrank(user);
+        deal(address(indexTokens[0]), user, 800e18);
+        // User stakes 500 tokens
+        indexTokens[0].approve(address(nexStaking), 800e18);
+        nexStaking.stake(address(indexTokens[0]), 800e18);
+
+        uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
+
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault).approve(address(nexStaking), type(uint256).max);
+
+        console.log("Vault total assets: ", ERC4626(vault).totalAssets());
+
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        deal(address(indexTokens[0]), user2, 200e18);
+        // User stakes 500 tokens
+        indexTokens[0].approve(address(nexStaking), 200e18);
+        nexStaking.stake(address(indexTokens[0]), 200e18);
+
+        uint256 user2BalanceBeforeUnStake = indexTokens[0].balanceOf(user2);
+
+        address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault2).approve(address(nexStaking), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
+
+        (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(800e18, 3);
+
+        uint256 userRewardTokenBalanceBeforeUnstake = rewardTokens[1].balanceOf(user);
+        uint256 stakingContractBalance = indexTokens[0].balanceOf(address(nexStaking));
+
+        console.log("User reward token balance before unstake: ", userRewardTokenBalanceBeforeUnstake);
+        console.log("Staking contract balance before unstake: ", stakingContractBalance);
+
+        // Unstake all tokens and receive rewards
+        nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee);
+
+        uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user);
+        uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
+
+        console.log("User reward token balance after unstake: ", userRewardTokenBalanceAfterUnstake);
+        console.log("User balance after unstake: ", userBalanceAfterUnStake);
+
+        assertGt(userRewardTokenBalanceAfterUnstake, userRewardTokenBalanceBeforeUnstake);
+        assertGt(userBalanceAfterUnStake, userBalanceBeforeUnStake);
+
+        uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
+        console.log("Remaining shares: ", remainingShares);
+        assertEq(remainingShares, 0, "All shares should be redeemed");
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user2));
+
+        (, uint256 amountAfterFee2) = CalculationHelpers.calculateAmountAfterFeeAndFee(200e18, 3);
+
+        uint256 user2RewardTokenBalanceBeforeUnstake = rewardTokens[1].balanceOf(user2);
+        uint256 staking2ContractBalance = indexTokens[0].balanceOf(address(nexStaking));
+
+        console.log("User reward token balance before unstake: ", user2RewardTokenBalanceBeforeUnstake);
+        console.log("Staking contract balance before unstake: ", staking2ContractBalance);
+
+        // Unstake all tokens and receive rewards
+        nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee2);
+
+        uint256 user2RewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user2);
+        uint256 user2BalanceAfterUnStake = indexTokens[0].balanceOf(user2);
+
+        console.log("User reward token balance after unstake: ", user2RewardTokenBalanceAfterUnstake);
+        console.log("User balance after unstake: ", user2BalanceAfterUnStake);
+
+        assertGt(user2RewardTokenBalanceAfterUnstake, user2RewardTokenBalanceBeforeUnstake);
+        assertGt(user2BalanceAfterUnStake, user2BalanceBeforeUnStake);
+
+        uint256 remainingShares2 = nexStaking.getUserShares(user2, address(indexTokens[0]));
+        console.log("Remaining shares: ", remainingShares2);
+        assertEq(remainingShares2, 0, "All shares should be redeemed");
+        vm.stopPrank();
+    }
+
+    function testUnstakeSomeTokensWithTwoUsersWithDifferentTokenReward() public {
+        vm.startPrank(user);
+        deal(address(indexTokens[0]), user, 500e18);
+        // User stakes 500 tokens
+        indexTokens[0].approve(address(nexStaking), 500e18);
+        nexStaking.stake(address(indexTokens[0]), 500e18);
+
+        uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
+
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault).approve(address(nexStaking), type(uint256).max);
+
+        console.log("Vault total assets: ", ERC4626(vault).totalAssets());
+
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        deal(address(indexTokens[0]), user2, 200e18);
+        // User stakes 500 tokens
+        indexTokens[0].approve(address(nexStaking), 200e18);
+        nexStaking.stake(address(indexTokens[0]), 200e18);
+
+        uint256 user2BalanceBeforeUnStake = indexTokens[0].balanceOf(user2);
+
+        address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault2).approve(address(nexStaking), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
+
+        (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(250e18, 3);
+
+        uint256 userRewardTokenBalanceBeforeUnstake = rewardTokens[1].balanceOf(user);
+        uint256 stakingContractBalance = indexTokens[0].balanceOf(address(nexStaking));
+
+        console.log("User reward token balance before unstake: ", userRewardTokenBalanceBeforeUnstake);
+        console.log("Staking contract balance before unstake: ", stakingContractBalance);
+
+        // Unstake all tokens and receive rewards
+        nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee);
+
+        uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user);
+        uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
+
+        console.log("User reward token balance after unstake: ", userRewardTokenBalanceAfterUnstake);
+        console.log("User balance after unstake: ", userBalanceAfterUnStake);
+
+        assertGt(userRewardTokenBalanceAfterUnstake, userRewardTokenBalanceBeforeUnstake);
+        assertGt(userBalanceAfterUnStake, userBalanceBeforeUnStake);
+
+        uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
+        uint256 expectedRemainingShares = ERC4626(vault).balanceOf(user);
+
+        console.log("Remaining shares: ", remainingShares);
+        assertEq(remainingShares, expectedRemainingShares, "All shares should be redeemed");
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user2));
+
+        (, uint256 amountAfterFee2) = CalculationHelpers.calculateAmountAfterFeeAndFee(100e18, 3);
+
+        uint256 user2RewardTokenBalanceBeforeUnstake = rewardTokens[1].balanceOf(user2);
+        uint256 staking2ContractBalance = indexTokens[0].balanceOf(address(nexStaking));
+
+        console.log("User reward token balance before unstake: ", user2RewardTokenBalanceBeforeUnstake);
+        console.log("Staking contract balance before unstake: ", staking2ContractBalance);
+
+        // Unstake all tokens and receive rewards
+        nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee2);
+
+        uint256 user2RewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user2);
+        uint256 user2BalanceAfterUnStake = indexTokens[0].balanceOf(user2);
+
+        console.log("User reward token balance after unstake: ", user2RewardTokenBalanceAfterUnstake);
+        console.log("User balance after unstake: ", user2BalanceAfterUnStake);
+
+        assertGt(user2RewardTokenBalanceAfterUnstake, user2RewardTokenBalanceBeforeUnstake);
+        assertGt(user2BalanceAfterUnStake, user2BalanceBeforeUnStake);
+
+        uint256 remainingShares2 = nexStaking.getUserShares(user2, address(indexTokens[0]));
+        uint256 expectedRemainingShares2 = ERC4626(vault).balanceOf(user2);
+
+        console.log("Remaining shares: ", remainingShares2);
+        assertEq(remainingShares2, expectedRemainingShares2, "All shares should be redeemed");
+        vm.stopPrank();
+    }
+
+    function testUnstakeAllTokensWithTwoUsersWitSameTokenReward() public {
+        vm.startPrank(user);
+        deal(address(indexTokens[0]), user, 500e18);
+        // User stakes 500 tokens
+        indexTokens[0].approve(address(nexStaking), 500e18);
+        nexStaking.stake(address(indexTokens[0]), 500e18);
+
+        uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
+
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault).approve(address(nexStaking), type(uint256).max);
+
+        console.log("Vault total assets: ", ERC4626(vault).totalAssets());
+
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        deal(address(indexTokens[0]), user2, 200e18);
+        // User stakes 500 tokens
+        indexTokens[0].approve(address(nexStaking), 200e18);
+        nexStaking.stake(address(indexTokens[0]), 200e18);
+
+        uint256 user2BalanceBeforeUnStake = indexTokens[0].balanceOf(user2);
+
+        address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault2).approve(address(nexStaking), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
+
+        (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(500e18, 3);
+
+        uint256 stakingContractBalance = indexTokens[0].balanceOf(address(nexStaking));
+
+        console.log("Staking contract balance before unstake: ", stakingContractBalance);
+
+        // Unstake all tokens and receive rewards
+        nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee);
+
+        uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
+
+        console.log("User balance after unstake: ", userBalanceAfterUnStake);
+
+        assertGt(userBalanceAfterUnStake, userBalanceBeforeUnStake);
+
+        uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
+        console.log("Remaining shares: ", remainingShares);
+        assertEq(remainingShares, 0, "All shares should be redeemed");
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user2));
+
+        (, uint256 amountAfterFee2) = CalculationHelpers.calculateAmountAfterFeeAndFee(200e18, 3);
+
+        uint256 staking2ContractBalance = indexTokens[0].balanceOf(address(nexStaking));
+
+        console.log("Staking contract balance before unstake: ", staking2ContractBalance);
+
+        // Unstake all tokens and receive rewards
+        nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee2);
+
+        uint256 user2BalanceAfterUnStake = indexTokens[0].balanceOf(user2);
+
+        console.log("User balance after unstake: ", user2BalanceAfterUnStake);
+
+        assertGt(user2BalanceAfterUnStake, user2BalanceBeforeUnStake);
+
+        uint256 remainingShares2 = nexStaking.getUserShares(user2, address(indexTokens[0]));
+        console.log("Remaining shares: ", remainingShares2);
+        assertEq(remainingShares2, 0, "All shares should be redeemed");
+        vm.stopPrank();
+    }
+
+    function testUnstakeSomeTokensWithTwoUsersWitSameTokenReward() public {
+        vm.startPrank(user);
+        deal(address(indexTokens[0]), user, 500e18);
+        // User stakes 500 tokens
+        indexTokens[0].approve(address(nexStaking), 500e18);
+        nexStaking.stake(address(indexTokens[0]), 500e18);
+
+        uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
+
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault).approve(address(nexStaking), type(uint256).max);
+
+        console.log("Vault total assets: ", ERC4626(vault).totalAssets());
+
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        deal(address(indexTokens[0]), user2, 200e18);
+        // User stakes 500 tokens
+        indexTokens[0].approve(address(nexStaking), 200e18);
+        nexStaking.stake(address(indexTokens[0]), 200e18);
+
+        uint256 user2BalanceBeforeUnStake = indexTokens[0].balanceOf(user2);
+
+        address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault2).approve(address(nexStaking), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
+
+        (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(250e18, 3);
+
+        uint256 stakingContractBalance = indexTokens[0].balanceOf(address(nexStaking));
+
+        console.log("Staking contract balance before unstake: ", stakingContractBalance);
+
+        // Unstake all tokens and receive rewards
+        nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee);
+
+        uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
+
+        console.log("User balance after unstake: ", userBalanceAfterUnStake);
+
+        assertGt(userBalanceAfterUnStake, userBalanceBeforeUnStake);
+
+        uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
+        uint256 expectedRemainingShares = ERC4626(vault).balanceOf(user);
+
+        console.log("Remaining shares: ", remainingShares);
+        assertEq(remainingShares, expectedRemainingShares, "All shares should be redeemed");
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user2));
+
+        (, uint256 amountAfterFee2) = CalculationHelpers.calculateAmountAfterFeeAndFee(100e18, 3);
+
+        uint256 staking2ContractBalance = indexTokens[0].balanceOf(address(nexStaking));
+
+        console.log("Staking contract balance before unstake: ", staking2ContractBalance);
+
+        // Unstake all tokens and receive rewards
+        nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee2);
+
+        uint256 user2BalanceAfterUnStake = indexTokens[0].balanceOf(user2);
+
+        console.log("User balance after unstake: ", user2BalanceAfterUnStake);
+
+        assertGt(user2BalanceAfterUnStake, user2BalanceBeforeUnStake);
+
+        uint256 remainingShares2 = nexStaking.getUserShares(user2, address(indexTokens[0]));
+        uint256 expectedRemainingShares2 = ERC4626(vault).balanceOf(user2);
+
+        console.log("Remaining shares: ", remainingShares2);
+        assertEq(remainingShares2, expectedRemainingShares2, "All shares should be redeemed");
+        vm.stopPrank();
+    }
+
     function testSwapIndexToReward() public {
         console.log("-----------------testSwapIndexToReward-----------------");
 
         vm.startPrank(user);
+
+        deal(address(indexTokens[0]), user, 500e18);
 
         // Approve the router to spend the user's index tokens
         indexTokens[0].approve(address(swapRouterV3), 500e18);
@@ -355,7 +705,7 @@ contract NexStakingTest is Test {
             indexToken.mint(address(this), 100000e24);
             indexToken.mint(msg.sender, 100000e24);
             indexToken.mint(msg.sender, 100000e24);
-            indexToken.mint(user, 100000e24);
+            // indexToken.mint(user, 100000e24);
 
             rewardTokens.push(indexToken);
 
@@ -367,12 +717,12 @@ contract NexStakingTest is Test {
             rewardTokens.push(rewardToken);
 
             rewardToken.mint(address(this), 1e24);
-            rewardToken.mint(user, 1e24);
+            // rewardToken.mint(user, 1e24);
             rewardToken.mint(address(this), 100000e24);
             rewardToken.mint(address(this), 100000e24);
             rewardToken.mint(msg.sender, 100000e24);
             rewardToken.mint(msg.sender, 100000e24);
-            rewardToken.mint(user, 100000e24);
+            // rewardToken.mint(user, 100000e24);
 
             console.log("Index Token ", i, " deployed at: ", address(indexToken));
             // console.log("Reward Token ", i, " deployed at: ", address(rewardToken));
@@ -451,24 +801,17 @@ contract NexStakingTest is Test {
 
         uint256 wethBalance = weth.balanceOf(address(this));
         uint256 indexTokenBalance = indexToken.balanceOf(address(this));
-        // console.log("WETH balance before liquidity: ", wethBalance);
-        // console.log("IndexToken balance before liquidity: ", indexTokenBalance);
 
         require(wethBalance >= 5e18, "Not enough WETH for liquidity");
         require(indexTokenBalance >= 1000e18, "Not enough index tokens for liquidity");
 
-        // console.log("Adding liquidity...");
+        // Determine token0 and token1
         address token0 = address(weth) < address(indexToken) ? address(weth) : address(indexToken);
         address token1 = address(weth) > address(indexToken) ? address(weth) : address(indexToken);
 
-        // console.log("Token0: ", token0);
-        // console.log("Token1: ", token1);
-
-        // Encode initial price: Assuming 1 WETH = 1000 index tokens
         uint160 initialPrice = encodePriceSqrt(1000, 1);
         console.log("Initial price sqrt: ", uint256(initialPrice));
 
-        // address pool = IUniswapV3Factory(uniswapV3Factory).getPool(token0, token1, 3000);
         address pool = uniswapV3Factory.getPool(token0, token1, 3000);
 
         if (pool == address(0)) {
@@ -477,15 +820,24 @@ contract NexStakingTest is Test {
             INonfungiblePositionManager(nonfungiblePositionManager).createAndInitializePoolIfNecessary(
                 token0, token1, 3000, initialPrice
             );
-            // pool = uniswapV3Factory.getPool(token0, token1, 3000);
         } else {
             console.log("Pool already exists: ", pool);
         }
 
-        // IERC20(token0).approve(address(nonfungiblePositionManager), type(uint256).max);
-        // IERC20(token1).approve(address(nonfungiblePositionManager), type(uint256).max);
         weth.approve(address(nonfungiblePositionManager), type(uint256).max);
         indexToken.approve(address(nonfungiblePositionManager), type(uint256).max);
+
+        // Set amount0Desired and amount1Desired based on whether the first token is WETH
+        uint256 amount0Desired;
+        uint256 amount1Desired;
+
+        if (token0 == address(weth)) {
+            amount0Desired = 5e18; // WETH as the first token
+            amount1Desired = 1000e18; // The other token
+        } else {
+            amount0Desired = 1000e18; // The other token
+            amount1Desired = 5e18; // WETH
+        }
 
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
             token0: token0,
@@ -493,8 +845,8 @@ contract NexStakingTest is Test {
             fee: 3000,
             tickLower: getMinTick(3000),
             tickUpper: getMaxTick(3000),
-            amount0Desired: 1000e18,
-            amount1Desired: 5e18,
+            amount0Desired: amount0Desired,
+            amount1Desired: amount1Desired,
             amount0Min: 0,
             amount1Min: 0,
             recipient: address(this),
@@ -502,9 +854,61 @@ contract NexStakingTest is Test {
         });
 
         INonfungiblePositionManager(nonfungiblePositionManager).mint(params);
-        // console.log("Liquidity added for Index Token ", address(indexToken));
-        // console.log("Liquidity amount: ", liquidity);
+        console.log("Liquidity added for Index Token ", address(indexToken));
     }
+
+    // function addLiquidity(IERC20 indexToken) internal {
+    //     // Wrap ETH into WETH
+    //     wrapEthToWeth();
+
+    //     uint256 wethBalance = weth.balanceOf(address(this));
+    //     uint256 indexTokenBalance = indexToken.balanceOf(address(this));
+    //     // console.log("WETH balance before liquidity: ", wethBalance);
+    //     // console.log("IndexToken balance before liquidity: ", indexTokenBalance);
+
+    //     require(wethBalance >= 5e18, "Not enough WETH for liquidity");
+    //     require(indexTokenBalance >= 1000e18, "Not enough index tokens for liquidity");
+
+    //     // console.log("Adding liquidity...");
+    //     address token0 = address(weth) < address(indexToken) ? address(weth) : address(indexToken);
+    //     address token1 = address(weth) > address(indexToken) ? address(weth) : address(indexToken);
+
+    //     uint160 initialPrice = encodePriceSqrt(1000, 1);
+    //     console.log("Initial price sqrt: ", uint256(initialPrice));
+
+    //     address pool = uniswapV3Factory.getPool(token0, token1, 3000);
+
+    //     if (pool == address(0)) {
+    //         console.log("Pool does not exist, creating and initializing pool");
+
+    //         INonfungiblePositionManager(nonfungiblePositionManager).createAndInitializePoolIfNecessary(
+    //             token0, token1, 3000, initialPrice
+    //         );
+    //     } else {
+    //         console.log("Pool already exists: ", pool);
+    //     }
+
+    //     weth.approve(address(nonfungiblePositionManager), type(uint256).max);
+    //     indexToken.approve(address(nonfungiblePositionManager), type(uint256).max);
+
+    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
+    //         token0: token0,
+    //         token1: token1,
+    //         fee: 3000,
+    //         tickLower: getMinTick(3000),
+    //         tickUpper: getMaxTick(3000),
+    //         amount0Desired: 1000e18,
+    //         amount1Desired: 5e18,
+    //         amount0Min: 0,
+    //         amount1Min: 0,
+    //         recipient: address(this),
+    //         deadline: block.timestamp + 1200
+    //     });
+
+    //     INonfungiblePositionManager(nonfungiblePositionManager).mint(params);
+    //     // console.log("Liquidity added for Index Token ", address(indexToken));
+    //     // console.log("Liquidity amount: ", liquidity);
+    // }
 
     function wrapEthToWeth() public {
         IWETH9 wethContract = IWETH9(address(weth));

@@ -99,14 +99,14 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         require(amount > 0, "Staking amount must be greater than zero.");
 
         (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(amount);
-
         IERC20(tokenAddress).safeTransferFrom(msg.sender, owner(), fee);
+
         address vault = tokenAddressToVaultAddress[tokenAddress];
 
         IERC20(tokenAddress).approve(vault, amountAfterFee);
-        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), amountAfterFee); // Transfer to NexStaking first
+        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), amountAfterFee);
+
         uint256 shares = ERC4626(vault).deposit(amountAfterFee, msg.sender);
-        // uint256 shares = ERC4626(vault).deposit(amountAfterFee, tx.origin);
 
         if (position.stakeAmount > 0) {
             position.stakeAmount += amountAfterFee;
@@ -134,37 +134,25 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
 
         address vault = tokenAddressToVaultAddress[tokenAddress];
 
-        // Calculate the percentage of the user's total stake they are unstaking
         uint256 totalUserStake = position.stakeAmount;
-        uint256 unstakePercentage = (unstakeAmount * 1e18) / totalUserStake; // Get percentage in terms of 18 decimals
+        uint256 unstakePercentage = (unstakeAmount * 1e18) / totalUserStake;
 
-        // Redeem proportional shares based on the unstake percentage
         uint256 userShares = ERC4626(vault).balanceOf(msg.sender);
-        uint256 sharesToRedeem = (userShares * unstakePercentage) / 1e18; // Redeem shares proportional to the unstake percentage
+        uint256 sharesToRedeem = (userShares * unstakePercentage) / 1e18;
 
-        // Redeem the corresponding assets from the vault
         uint256 redeemableTokens = ERC4626(vault).redeem(sharesToRedeem, address(this), msg.sender);
 
-        // Apply the 0.3% fee on the redeemable amount
         (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemableTokens);
 
-        // Check if the reward token is the same as the staked token
         if (tokenAddress == rewardTokenAddress) {
-            // If the reward token is the same as the staked token, transfer the entire amount
             IERC20(tokenAddress).safeTransfer(msg.sender, amountAfterFee);
         } else {
-            // If the reward token is different, calculate the staked and reward portions
-
-            // Staked portion: Proportional to the unstake amount (in terms of the user's original stake)
             uint256 stakedPortion = unstakeAmount;
 
-            // Reward portion: Anything beyond the staked amount
             uint256 rewardPortion = amountAfterFee > stakedPortion ? amountAfterFee - stakedPortion : 0;
 
-            // Transfer the staked portion back to the user
             IERC20(tokenAddress).safeTransfer(msg.sender, stakedPortion);
 
-            // Swap the reward portion for the desired reward token, if it exists
             if (rewardPortion > 0) {
                 address[] memory path;
                 path = new address[](3);
@@ -180,10 +168,8 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
             }
         }
 
-        // Transfer the fee to the contract owner
         IERC20(tokenAddress).safeTransfer(owner(), fee);
 
-        // Clean up the user's position if they have no remaining shares
         if (ERC4626(vault).balanceOf(msg.sender) == 0) {
             delete positions[msg.sender][tokenAddress];
             numberOfStakersByTokenAddress[tokenAddress] -= 1;

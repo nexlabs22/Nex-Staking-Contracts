@@ -39,7 +39,7 @@ contract FeeManager is OwnableUpgradeable {
     event TokensSwapped(address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut);
 
     function initialize(
-        NexStaking _nexStagingAddress,
+        NexStaking _nexStakingAddress,
         address[] memory _indexTokensAddresses,
         address[] memory _rewardTokensAddresses,
         uint8[] memory _swapVersions,
@@ -52,7 +52,7 @@ contract FeeManager is OwnableUpgradeable {
     ) public initializer {
         __Ownable_init(msg.sender);
 
-        nexStaking = NexStaking(_nexStagingAddress);
+        nexStaking = NexStaking(_nexStakingAddress);
         routerV3 = ISwapRouter(_uniswapRouter);
         routerV2 = IUniswapV2Router02(_uniswapV2Router);
         weth = IWETH9(_weth);

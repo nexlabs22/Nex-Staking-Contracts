@@ -104,13 +104,11 @@ contract NexStakingTest is Test {
 
         deal(address(indexTokens[0]), user, 500e18);
 
-        // User stakes 500 tokens
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
         uint256 userBalanceAfterStake = indexTokens[0].balanceOf(user);
 
-        // Approve NexStaking for redeeming shares from the vault
         address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), 500e18);
 
@@ -120,7 +118,6 @@ contract NexStakingTest is Test {
 
         (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(500e18, 3);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee);
 
         uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
@@ -134,41 +131,45 @@ contract NexStakingTest is Test {
     }
 
     function testUnstakeSomeTokensWithSameTokenReward() public {
-        console.log("-----------------testUnstakeAllTokens-----------------");
-
         vm.startPrank(user);
 
         deal(address(indexTokens[0]), user, 500e18);
-
         // User stakes 500 tokens
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
-        uint256 userBalanceAfterStake = indexTokens[0].balanceOf(user);
+        uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-        // Approve NexStaking for redeeming shares from the vault
         address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
-        ERC4626(vault).approve(address(nexStaking), 500e18);
+        ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
-        deal(address(indexTokens[0]), vault, 100e18);
+        console.log("Vault total assets: ", ERC4626(vault).totalAssets());
 
-        // console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
 
         (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(250e18, 3);
+
+        uint256 stakingContractBalance = indexTokens[0].balanceOf(address(nexStaking));
+
+        console.log("Staking contract balance before unstake: ", stakingContractBalance);
 
         nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee);
 
         uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
 
-        assertGt(userBalanceAfterUnStake, userBalanceAfterStake);
+        console.log("User balance after unstake: ", userBalanceAfterUnStake);
 
-        uint256 expectedRemainingShares = ERC4626(vault).balanceOf(user);
+        assertGt(userBalanceAfterUnStake, userBalanceBeforeUnStake);
+
         uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
+        uint256 expectedRemainingShares = ERC4626(vault).balanceOf(user);
+
+        console.log("Remaining shares: ", remainingShares);
         assertEq(remainingShares, expectedRemainingShares, "All shares should be redeemed");
 
         vm.stopPrank();
-
-        console.log("-----------------testUnstakeAllTokens-----------------");
     }
 
     function testUnstakeAllTokensWithDifferentRewardToken() public {
@@ -445,7 +446,7 @@ contract NexStakingTest is Test {
         assertGt(user2BalanceAfterUnStake, user2BalanceBeforeUnStake);
 
         uint256 remainingShares2 = nexStaking.getUserShares(user2, address(indexTokens[0]));
-        uint256 expectedRemainingShares2 = ERC4626(vault).balanceOf(user2);
+        uint256 expectedRemainingShares2 = ERC4626(vault2).balanceOf(user2);
 
         console.log("Remaining shares: ", remainingShares2);
         assertEq(remainingShares2, expectedRemainingShares2, "All shares should be redeemed");

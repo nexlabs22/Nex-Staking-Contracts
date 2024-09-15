@@ -135,32 +135,38 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         address vault = tokenAddressToVaultAddress[tokenAddress];
 
         uint256 totalUserStake = position.stakeAmount;
-        uint256 unstakePercentage = (unstakeAmount * 1e18) / totalUserStake;
+        // uint256 unstakePercentage = (unstakeAmount * 1e18) / totalUserStake;
+        uint256 unstakePercentage = calculateUnstakePercentage(unstakeAmount, totalUserStake);
 
-        uint256 userShares = ERC4626(vault).balanceOf(msg.sender);
-        uint256 sharesToRedeem = (userShares * unstakePercentage) / 1e18;
+        // uint256 userShares = ERC4626(vault).balanceOf(msg.sender);
+        uint256 sharesToRedeem = calculateSharesToRedeem(vault, unstakePercentage);
 
         uint256 redeemableTokens = ERC4626(vault).redeem(sharesToRedeem, address(this), msg.sender);
 
-        (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemableTokens);
+        uint256 stakedPortion = unstakeAmount;
+        uint256 totalReward = redeemableTokens > stakedPortion ? redeemableTokens - stakedPortion : 0;
+        uint256 rewardPortion = (totalReward * unstakePercentage) / 1e18;
+
+        uint256 fee = 0;
+        uint256 rewardAfterFee = rewardPortion;
+        if (rewardPortion > 0) {
+            (fee, rewardAfterFee) = calculateAmountAfterFeeAndFee(rewardPortion);
+        }
 
         if (tokenAddress == rewardTokenAddress) {
-            IERC20(tokenAddress).safeTransfer(msg.sender, amountAfterFee);
+            uint256 totalAmount = stakedPortion + rewardAfterFee;
+            IERC20(tokenAddress).safeTransfer(msg.sender, totalAmount);
         } else {
-            uint256 stakedPortion = unstakeAmount;
-
-            uint256 rewardPortion = amountAfterFee > stakedPortion ? amountAfterFee - stakedPortion : 0;
-
             IERC20(tokenAddress).safeTransfer(msg.sender, stakedPortion);
 
-            if (rewardPortion > 0) {
+            if (rewardAfterFee > 0) {
                 address[] memory path;
                 path = new address[](3);
                 path[0] = tokenAddress;
                 path[1] = address(weth);
                 path[2] = rewardTokenAddress;
 
-                uint256 swappedRewardAmount = SwapHelpers.swapIndexToReward(routerV3, path, rewardPortion, msg.sender);
+                uint256 swappedRewardAmount = SwapHelpers.swapIndexToReward(routerV3, path, rewardAfterFee, msg.sender);
 
                 emit RewardTokensSwapped(
                     tokenAddress, rewardTokenAddress, rewardPortion, swappedRewardAmount, msg.sender
@@ -210,5 +216,18 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         address vault = tokenAddressToVaultAddress[tokenAddress];
         uint256 shares = ERC4626(vault).balanceOf(user);
         return shares;
+    }
+
+    function calculateUnstakePercentage(uint256 unstakeAmount, uint256 totalUserStake)
+        internal
+        pure
+        returns (uint256)
+    {
+        return (unstakeAmount * 1e18) / totalUserStake;
+    }
+
+    function calculateSharesToRedeem(address vault, uint256 unstakePercentage) internal view returns (uint256) {
+        uint256 userShares = ERC4626(vault).balanceOf(msg.sender);
+        return (userShares * unstakePercentage) / 1e18;
     }
 }

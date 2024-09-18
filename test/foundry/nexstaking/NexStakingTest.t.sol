@@ -3,15 +3,16 @@ pragma solidity ^0.8.26;
 
 import {Test, console} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
+
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {NexStaking} from "../../../contracts/NexStaking.sol";
 import {FeeManager} from "../../../contracts/FeeManager.sol";
 import {ERC4626Factory} from "../../../contracts/factory/ERC4626Factory.sol";
 import {IWETH9} from "../../../contracts/interfaces/IWETH9.sol";
-import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import "../../../contracts/libraries/CalculationHelpers.sol";
-import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
-import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {CalculationHelpers} from "../../../contracts/libraries/CalculationHelpers.sol";
 import {INonfungiblePositionManager} from "../../../contracts/uniswap/INonfungiblePositionManager.sol";
 import {SwapHelpers} from "../../../contracts/libraries/SwapHelpers.sol";
 
@@ -79,10 +80,6 @@ contract NexStakingTest is Test {
     function testStakeTokens() public {
         console.log("-----------------testStakeTokens-----------------");
 
-        // deal(indexToken1, user, 1000e18);
-        // deal(indexToken2, user, 1000e18);
-
-        // Test staking functionality for user1
         vm.startPrank(user);
 
         deal(address(indexTokens[0]), user, 500e18);
@@ -768,17 +765,13 @@ contract NexStakingTest is Test {
             uniswapV3Router,
             unsiwapV2Router,
             address(uniswapV3Factory),
+            nonfungiblePositionManagerAddress,
             address(weth),
             address(rewardToken1),
             1 // Threshold
         );
 
         console.log("FeeManager initialized.");
-
-        // for (uint256 i = 0; i < 3; i++) {
-        //     address vault = nexStaking.tokenAddressToVaultAddress(address(indexToken));
-        //     indexToken.mint(vault, 10e18);
-        // }
     }
 
     function addLiquidityToAllPools() internal {
@@ -789,11 +782,6 @@ contract NexStakingTest is Test {
         for (uint256 i = 0; i < rewardTokens.length; i++) {
             addLiquidity(rewardTokens[i]);
         }
-
-        // addLiquidity(IERC20(usdc));
-
-        // console.log(msg.sender);
-        // console.log(address(this));
     }
 
     function addLiquidity(IERC20 indexToken) internal {
@@ -857,59 +845,6 @@ contract NexStakingTest is Test {
         INonfungiblePositionManager(nonfungiblePositionManager).mint(params);
         console.log("Liquidity added for Index Token ", address(indexToken));
     }
-
-    // function addLiquidity(IERC20 indexToken) internal {
-    //     // Wrap ETH into WETH
-    //     wrapEthToWeth();
-
-    //     uint256 wethBalance = weth.balanceOf(address(this));
-    //     uint256 indexTokenBalance = indexToken.balanceOf(address(this));
-    //     // console.log("WETH balance before liquidity: ", wethBalance);
-    //     // console.log("IndexToken balance before liquidity: ", indexTokenBalance);
-
-    //     require(wethBalance >= 5e18, "Not enough WETH for liquidity");
-    //     require(indexTokenBalance >= 1000e18, "Not enough index tokens for liquidity");
-
-    //     // console.log("Adding liquidity...");
-    //     address token0 = address(weth) < address(indexToken) ? address(weth) : address(indexToken);
-    //     address token1 = address(weth) > address(indexToken) ? address(weth) : address(indexToken);
-
-    //     uint160 initialPrice = encodePriceSqrt(1000, 1);
-    //     console.log("Initial price sqrt: ", uint256(initialPrice));
-
-    //     address pool = uniswapV3Factory.getPool(token0, token1, 3000);
-
-    //     if (pool == address(0)) {
-    //         console.log("Pool does not exist, creating and initializing pool");
-
-    //         INonfungiblePositionManager(nonfungiblePositionManager).createAndInitializePoolIfNecessary(
-    //             token0, token1, 3000, initialPrice
-    //         );
-    //     } else {
-    //         console.log("Pool already exists: ", pool);
-    //     }
-
-    //     weth.approve(address(nonfungiblePositionManager), type(uint256).max);
-    //     indexToken.approve(address(nonfungiblePositionManager), type(uint256).max);
-
-    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-    //         token0: token0,
-    //         token1: token1,
-    //         fee: 3000,
-    //         tickLower: getMinTick(3000),
-    //         tickUpper: getMaxTick(3000),
-    //         amount0Desired: 1000e18,
-    //         amount1Desired: 5e18,
-    //         amount0Min: 0,
-    //         amount1Min: 0,
-    //         recipient: address(this),
-    //         deadline: block.timestamp + 1200
-    //     });
-
-    //     INonfungiblePositionManager(nonfungiblePositionManager).mint(params);
-    //     // console.log("Liquidity added for Index Token ", address(indexToken));
-    //     // console.log("Liquidity amount: ", liquidity);
-    // }
 
     function wrapEthToWeth() public {
         IWETH9 wethContract = IWETH9(address(weth));

@@ -9,13 +9,12 @@ import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRoute
 import {ReentrancyGuardUpgradeable} from
     "@openzeppelin/contracts-upgradeable/contracts/utils/ReentrancyGuardUpgradeable.sol";
 
-import {ProposableOwnableUpgradeable} from "./proposable/ProposableOwnableUpgradeable.sol";
 import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
 import {CalculationHelpers} from "./libraries/CalculationHelpers.sol";
 import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 
-contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     ERC4626Factory public erc4626Factory;

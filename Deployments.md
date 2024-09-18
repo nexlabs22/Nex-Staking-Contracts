@@ -1,7 +1,0 @@
-== Logs ==
-  NexStaging deployed to: 0xcA93886855021D96E7f80340C1Db182DEFBFE184
-  NexStaging Proxy deployed to: 0xcA93886855021D96E7f80340C1Db182DEFBFE184
-  ProxyAdmin deployed to: 0x2E5fE2088a1d898B555e4815c176752f0Aa75421
-  NexLabsToken deployed to: 0xAdD3ccD53C7Bb495f6f27feb63E3e88B0C894BB5
-  IndexToken1 deployed to: 0x134D8D8998483CDBD1Dcb4cfc96004da4591D1DD
-  IndexToken2 deployed to: 0x3cf136294DC397506a9f187d82cdE9B1cf210c3F

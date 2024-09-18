@@ -4,11 +4,11 @@ pragma solidity ^0.8.26;
 import {Test, console} from "forge-std/Test.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 
 import {MockERC20} from "./../mocks/MockERC20.sol";
 import {INonfungiblePositionManager} from "../../../contracts/uniswap/INonfungiblePositionManager.sol";
 import {NexStaking} from "../../../contracts/NexStaking.sol";
-import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import {FeeManager} from "../../../contracts/FeeManager.sol";
 import {ERC4626Factory} from "../../../contracts/factory/ERC4626Factory.sol";
 import {IWETH9} from "../../../contracts/interfaces/IWETH9.sol";
@@ -167,6 +167,7 @@ contract FeeManagerTest is Test {
             uniswapV3Router,
             unsiwapV2Router,
             address(uniswapV3Factory),
+            nonfungiblePositionManagerAddress,
             address(weth),
             address(usdc),
             1
@@ -376,18 +377,6 @@ contract FeeManagerTest is Test {
 
         console.log("-----------------testGetAmountOut-----------------");
     }
-
-    // function addLiquidityToAllPools() internal {
-    //     for (uint256 i = 0; i < indexTokens.length; i++) {
-    //         addLiquidity(indexTokens[i], 1000e18, 5e18);
-    //     }
-
-    //     for (uint256 i = 0; i < rewardTokens.length; i++) {
-    //         addLiquidity(rewardTokens[i], 1000e18, 5e18);
-    //     }
-
-    //     addLiquidity(IERC20(usdc), 1000e18, 5e18);
-    // }
 
     function addLiquidityToAllPools() internal {
         uint256 indexTokenAmount = 1000e18; // Define the amount of index tokens to add to each pool

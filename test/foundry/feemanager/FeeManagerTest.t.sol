@@ -265,176 +265,54 @@ contract FeeManagerTest is Test {
         console.log("-----------------testGetPortfolioBalance-----------------");
     }
 
-    // function testCalculateWeightOfPools() public {
-    //     console.log("-----------------testCalculateWeightOfPools-----------------");
+    function testCalculateWeightOfPools() public {
+        console.log("-----------------testCalculateWeightOfPools-----------------");
 
-    //     // Deal tokens to pools (mock values)
-    //     deal(address(indexTokens[0]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]))), 500e18);
-    //     deal(address(indexTokens[1]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[1]))), 300e18);
-    //     deal(address(indexTokens[2]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[2]))), 200e18);
+        // Deal tokens to pools (mock values)
+        deal(address(indexTokens[0]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]))), 500e18);
+        deal(address(indexTokens[1]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[1]))), 300e18);
+        deal(address(indexTokens[2]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[2]))), 200e18);
 
-    //     // Calculate weights
-    //     uint256[] memory poolWeights = feeManager.calculateWeightOfPools();
+        // Calculate weights
+        uint256[] memory poolWeights = feeManager.calculateWeightOfPools();
 
-    //     // Log weights for each pool
-    //     for (uint256 i = 0; i < poolWeights.length; i++) {
-    //         console.log("Pool ", i, " weight: ", poolWeights[i]);
-    //     }
+        // Log weights for each pool
+        for (uint256 i = 0; i < poolWeights.length; i++) {
+            console.log("Pool ", i, " weight: ", poolWeights[i]);
+        }
 
-    //     // Get expected token-to-WETH conversion for each pool
-    //     uint256 indexToken0ToWeth = feeManager.getAmountOut(address(indexTokens[0]), address(weth), 500e18, 3);
-    //     uint256 indexToken1ToWeth = feeManager.getAmountOut(address(indexTokens[1]), address(weth), 300e18, 3);
-    //     uint256 indexToken2ToWeth = feeManager.getAmountOut(address(indexTokens[2]), address(weth), 200e18, 3);
+        // Get expected token-to-WETH conversion for each pool
+        uint256 indexToken0ToWeth = feeManager.getAmountOut(address(indexTokens[0]), address(weth), 500e18, 3);
+        uint256 indexToken1ToWeth = feeManager.getAmountOut(address(indexTokens[1]), address(weth), 300e18, 3);
+        uint256 indexToken2ToWeth = feeManager.getAmountOut(address(indexTokens[2]), address(weth), 200e18, 3);
 
-    //     // Log each token's WETH value
-    //     console.log("Token 0 to WETH: ", indexToken0ToWeth);
-    //     console.log("Token 1 to WETH: ", indexToken1ToWeth);
-    //     console.log("Token 2 to WETH: ", indexToken2ToWeth);
+        // Log each token's WETH value
+        console.log("Token 0 to WETH: ", indexToken0ToWeth);
+        console.log("Token 1 to WETH: ", indexToken1ToWeth);
+        console.log("Token 2 to WETH: ", indexToken2ToWeth);
 
-    //     // Calculate total portfolio value
-    //     uint256 totalPortfolioValue = 500e18 + 300e18 + 200e18;
-    //     totalPortfolioValue += indexToken0ToWeth + indexToken1ToWeth + indexToken2ToWeth;
+        // Calculate total portfolio value
+        uint256 totalPortfolioValue = 500e18 + 300e18 + 200e18;
+        totalPortfolioValue += indexToken0ToWeth + indexToken1ToWeth + indexToken2ToWeth;
 
-    //     console.log("Total portfolio value: ", totalPortfolioValue);
+        console.log("Total portfolio value: ", totalPortfolioValue);
 
-    //     // Expected weight for each pool
-    //     uint256 expectedWeightPool0 = ((500e18 + indexToken0ToWeth) * 1e18) / totalPortfolioValue;
-    //     uint256 expectedWeightPool1 = ((300e18 + indexToken1ToWeth) * 1e18) / totalPortfolioValue;
-    //     uint256 expectedWeightPool2 = ((200e18 + indexToken2ToWeth) * 1e18) / totalPortfolioValue;
+        // Expected weight for each pool
+        uint256 expectedWeightPool0 = ((500e18 + indexToken0ToWeth) * 1e18) / totalPortfolioValue;
+        uint256 expectedWeightPool1 = ((300e18 + indexToken1ToWeth) * 1e18) / totalPortfolioValue;
+        uint256 expectedWeightPool2 = ((200e18 + indexToken2ToWeth) * 1e18) / totalPortfolioValue;
 
-    //     console.log("Expected Weight for Pool 0: ", expectedWeightPool0);
-    //     console.log("Expected Weight for Pool 1: ", expectedWeightPool1);
-    //     console.log("Expected Weight for Pool 2: ", expectedWeightPool2);
+        console.log("Expected Weight for Pool 0: ", expectedWeightPool0);
+        console.log("Expected Weight for Pool 1: ", expectedWeightPool1);
+        console.log("Expected Weight for Pool 2: ", expectedWeightPool2);
 
-    //     // Validate weights
-    //     assertApproxEqAbs(poolWeights[0], expectedWeightPool0, 1e16, "Weight for pool 0 is incorrect");
-    //     assertApproxEqAbs(poolWeights[1], expectedWeightPool1, 1e16, "Weight for pool 1 is incorrect");
-    //     assertApproxEqAbs(poolWeights[2], expectedWeightPool2, 1e16, "Weight for pool 2 is incorrect");
+        // Validate weights
+        assertApproxEqAbs(poolWeights[0], expectedWeightPool0, 1e16, "Weight for pool 0 is incorrect");
+        assertApproxEqAbs(poolWeights[1], expectedWeightPool1, 1e16, "Weight for pool 1 is incorrect");
+        assertApproxEqAbs(poolWeights[2], expectedWeightPool2, 1e16, "Weight for pool 2 is incorrect");
 
-    //     console.log("-----------------testCalculateWeightOfPools-----------------");
-    // }
-
-    // function testCalculateWeightOfPools() public {
-    //     console.log("-----------------testCalculateWeightOfPools-----------------");
-
-    //     // Deal tokens to pools (mock values)
-    //     deal(address(indexTokens[0]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]))), 300e18);
-    //     deal(address(indexTokens[1]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[1]))), 300e18);
-    //     deal(address(indexTokens[2]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[2]))), 300e18);
-    //     // deal(address(indexTokens[2]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[2]))), 200e18);
-
-    //     // Calculate weights
-    //     uint256[] memory poolWeights = feeManager.calculateWeightOfPools();
-
-    //     // Log weights for each pool
-    //     for (uint256 i = 0; i < poolWeights.length; i++) {
-    //         console.log("Pool ", i, " weight: ", poolWeights[i]);
-    //     }
-
-    //     uint256 indexToken0ToWeth = feeManager.getAmountOut(address(indexTokens[0]), address(weth), 300e18, 3);
-    //     uint256 indexToken1ToWeth = feeManager.getAmountOut(address(indexTokens[1]), address(weth), 300e18, 3);
-    //     uint256 indexToken2ToWeth = feeManager.getAmountOut(address(indexTokens[2]), address(weth), 300e18, 3);
-    //     // uint256 indexToken2ToWeth = feeManager.getAmountOut(address(indexTokens[2]), address(weth), 200e18, 3);
-
-    //     // Log each token's WETH value
-    //     console.log("Token 0 to WETH: ", indexToken0ToWeth);
-    //     console.log("Token 1 to WETH: ", indexToken1ToWeth);
-    //     console.log("Token 2 to WETH: ", indexToken2ToWeth);
-
-    //     // Calculate total portfolio value
-    //     // uint256 totalPortfolioValue = 500e18 + 300e18 + 200e18;
-    //     uint256 totalPortfolioValue = 300e18 + 300e18 + 300e18;
-    //     // uint256 totalPortfolioValue = 500e18 + 300e18;
-    //     // totalPortfolioValue += indexToken0ToWeth + indexToken1ToWeth + indexToken2ToWeth;
-    //     // totalPortfolioValue += indexToken0ToWeth + indexToken1ToWeth;
-    //     totalPortfolioValue += indexToken0ToWeth + indexToken1ToWeth + indexToken2ToWeth;
-
-    //     console.log("Total portfolio value: ", totalPortfolioValue);
-
-    //     // Expected weight for each pool
-    //     uint256 expectedWeightPool0 = ((300e18 + indexToken0ToWeth) * 1e18) / totalPortfolioValue;
-    //     uint256 expectedWeightPool1 = ((300e18 + indexToken1ToWeth) * 1e18) / totalPortfolioValue;
-    //     uint256 expectedWeightPool2 = ((300e18 + indexToken2ToWeth) * 1e18) / totalPortfolioValue;
-
-    //     console.log("Expected Weight for Pool 0: ", expectedWeightPool0);
-    //     console.log("Expected Weight for Pool 1: ", expectedWeightPool1);
-    //     console.log("Expected Weight for Pool 2: ", expectedWeightPool2);
-
-    //     assertApproxEqAbs(poolWeights[0], expectedWeightPool0, 1e16, "Weight for pool 0 is incorrect");
-    //     assertApproxEqAbs(poolWeights[1], expectedWeightPool1, 1e16, "Weight for pool 1 is incorrect");
-    //     assertApproxEqAbs(poolWeights[2], expectedWeightPool2, 1e16, "Weight for pool 2 is incorrect");
-
-    //     console.log("-----------------testCalculateWeightOfPools-----------------");
-    // }
-
-    // function testCalculateWeightOfPools() public {
-    //     console.log("-----------------testCalculateWeightOfPools-----------------");
-
-    //     // Deal tokens to pools (mock values)
-    //     deal(address(indexTokens[0]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]))), 300e18);
-    //     deal(address(indexTokens[1]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[1]))), 300e18);
-    //     deal(address(indexTokens[2]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[2]))), 300e18);
-    //     deal(address(indexTokens[3]), address(nexStaking.tokenAddressToVaultAddress(address(indexTokens[3]))), 300e18);
-
-    //     // Calculate weights
-    //     uint256[] memory poolWeights = feeManager.calculateWeightOfPools();
-
-    //     // Log weights for each pool
-    //     for (uint256 i = 0; i < poolWeights.length; i++) {
-    //         console.log("Pool ", i, " weight: ", poolWeights[i]);
-    //     }
-
-    //     address vault0 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
-    //     address vault1 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[1]));
-    //     address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[2]));
-    //     address vault3 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[3]));
-
-    //     uint256 indexToken0Balance = indexTokens[0].balanceOf(vault0);
-    //     uint256 indexToken1Balance = indexTokens[1].balanceOf(vault1);
-    //     uint256 indexToken2Balance = indexTokens[2].balanceOf(vault2);
-    //     uint256 indexToken3Balance = indexTokens[3].balanceOf(vault3);
-
-    //     // Get WETH conversion rates for each pool
-    //     uint256 indexToken0ToWeth =
-    //         feeManager.getAmountOut(address(indexTokens[0]), address(weth), indexToken0Balance, 3);
-    //     uint256 indexToken1ToWeth =
-    //         feeManager.getAmountOut(address(indexTokens[1]), address(weth), indexToken1Balance, 3);
-    //     uint256 indexToken2ToWeth =
-    //         feeManager.getAmountOut(address(indexTokens[2]), address(weth), indexToken2Balance, 3);
-    //     uint256 indexToken3ToWeth =
-    //         feeManager.getAmountOut(address(indexTokens[3]), address(weth), indexToken3Balance, 3);
-
-    //     // Log each token's WETH value
-    //     console.log("Token 0 to WETH: ", indexToken0ToWeth);
-    //     console.log("Token 1 to WETH: ", indexToken1ToWeth);
-    //     console.log("Token 2 to WETH: ", indexToken2ToWeth);
-    //     console.log("Token 3 to WETH: ", indexToken3ToWeth);
-
-    //     // Calculate total portfolio value
-    //     // uint256 totalPortfolioValue = 300e18 + 300e18 + 300e18 + 300e18;
-    //     uint256 totalPortfolioValue = indexToken0Balance + indexToken1Balance + indexToken2Balance + indexToken3Balance;
-    //     totalPortfolioValue += indexToken0ToWeth + indexToken1ToWeth + indexToken2ToWeth + indexToken3ToWeth;
-
-    //     console.log("Total portfolio value: ", totalPortfolioValue);
-
-    //     // Expected weight for each pool
-    //     uint256 expectedWeightPool0 = ((indexToken0Balance + indexToken0ToWeth) * 1e18) / totalPortfolioValue;
-    //     uint256 expectedWeightPool1 = ((indexToken1Balance + indexToken1ToWeth) * 1e18) / totalPortfolioValue;
-    //     uint256 expectedWeightPool2 = ((indexToken2Balance + indexToken2ToWeth) * 1e18) / totalPortfolioValue;
-    //     uint256 expectedWeightPool3 = ((indexToken3Balance + indexToken3ToWeth) * 1e18) / totalPortfolioValue;
-
-    //     console.log("Expected Weight for Pool 0: ", expectedWeightPool0);
-    //     console.log("Expected Weight for Pool 1: ", expectedWeightPool1);
-    //     console.log("Expected Weight for Pool 2: ", expectedWeightPool2);
-    //     console.log("Expected Weight for Pool 3: ", expectedWeightPool3);
-
-    //     assertApproxEqAbs(poolWeights[0], expectedWeightPool0, 1e16, "Weight for pool 0 is incorrect");
-    //     assertApproxEqAbs(poolWeights[1], expectedWeightPool1, 1e16, "Weight for pool 1 is incorrect");
-    //     assertApproxEqAbs(poolWeights[2], expectedWeightPool2, 1e16, "Weight for pool 2 is incorrect");
-    //     assertApproxEqAbs(poolWeights[3], expectedWeightPool3, 1e16, "Weight for pool 2 is incorrect");
-
-    //     console.log("-----------------testCalculateWeightOfPools-----------------");
-    // }
+        console.log("-----------------testCalculateWeightOfPools-----------------");
+    }
 
     function testSwapTokens() public {
         vm.selectFork(mainnetFork);
@@ -517,41 +395,47 @@ contract FeeManagerTest is Test {
 
         // Loop through all the index tokens and add liquidity with the same amount of tokens and WETH for each pool
         for (uint256 i = 0; i < indexTokens.length; i++) {
-            addLiquidity(indexTokens[i], indexTokenAmount, wethAmount);
+            addLiquidity(indexTokens[i], address(weth), indexTokenAmount, wethAmount);
         }
 
         // Optionally, if you want to add liquidity for reward tokens or other tokens as well, you can repeat the process for reward tokens
         for (uint256 i = 0; i < rewardTokens.length; i++) {
-            addLiquidity(rewardTokens[i], indexTokenAmount, wethAmount);
+            addLiquidity(rewardTokens[i], address(weth), indexTokenAmount, wethAmount);
         }
 
         // You can add liquidity for USDC or other tokens as needed
-        addLiquidity(IERC20(usdc), indexTokenAmount, wethAmount);
+        addLiquidity(IERC20(usdc), address(weth), indexTokenAmount, wethAmount);
     }
 
-    function addLiquidity(IERC20 indexToken, uint256 indexTokenAmount, uint256 wethAmount) internal {
-        // Wrap ETH into WETH
+    function addLiquidity(IERC20 indexToken, address weth, uint256 indexTokenAmount, uint256 wethAmount) internal {
+        // Wrap ETH into WETH if necessary
         wrapEthToWeth();
 
         // Log token balances before adding liquidity
-        uint256 wethBalance = weth.balanceOf(address(this));
+        uint256 wethBalance = IERC20(weth).balanceOf(address(this));
         uint256 indexTokenBalance = indexToken.balanceOf(address(this));
 
         console.log("WETH Balance Before Adding Liquidity: ", wethBalance);
         console.log("Index Token Balance Before Adding Liquidity: ", indexTokenBalance);
 
+        // Ensure sufficient balances
         require(wethBalance >= wethAmount, "Not enough WETH for liquidity");
         require(indexTokenBalance >= indexTokenAmount, "Not enough index tokens for liquidity");
 
-        // Determine token0 and token1
-        address token0 = address(weth) < address(indexToken) ? address(weth) : address(indexToken);
-        address token1 = address(weth) > address(indexToken) ? address(weth) : address(indexToken);
+        // Determine token0 and token1 based on token address sorting
+        address token0 = address(indexToken) < weth ? address(indexToken) : weth;
+        address token1 = address(indexToken) > weth ? address(indexToken) : weth;
 
-        uint160 initialPrice = encodePriceSqrt(1000, 1);
+        // Set amounts based on token0 and token1 ordering
+        uint256 amount0Desired = token0 == address(indexToken) ? indexTokenAmount : wethAmount;
+        uint256 amount1Desired = token1 == address(weth) ? wethAmount : indexTokenAmount;
+
+        // Define initial price sqrt
+        uint160 initialPrice = encodePriceSqrt(1, 1); // Set the initial ratio to 1:1 for simplicity
         console.log("Initial price sqrt: ", uint256(initialPrice));
 
+        // Check if the pool exists; create it if necessary
         address pool = uniswapV3Factory.getPool(token0, token1, 3000);
-
         if (pool == address(0)) {
             console.log("Pool does not exist, creating and initializing pool");
 
@@ -563,106 +447,18 @@ contract FeeManagerTest is Test {
         }
 
         // Approve token transfers
-        weth.approve(address(nonfungiblePositionManager), type(uint256).max);
+        IERC20(weth).approve(address(nonfungiblePositionManager), type(uint256).max);
         indexToken.approve(address(nonfungiblePositionManager), type(uint256).max);
 
-        // Determine amount0 and amount1 based on token0 and token1 comparison to weth
-        uint256 amount0Desired;
-        uint256 amount1Desired;
-
-        // if (address(token0) < address(weth)) {
-        //     amount0Desired = wethAmount;
-        //     amount1Desired = indexTokenAmount;
-        // } else {
-        //     amount0Desired = indexTokenAmount;
-        //     amount1Desired = wethAmount;
-        // }
-
-        uint256[] memory amounts = new uint256[](2);
-        amounts[0] = token0 < token1 ? amount0Desired : amount1Desired;
-        amounts[1] = token0 > token1 ? amount0Desired : amount1Desired;
-
+        // Mint liquidity
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
             token0: token0,
             token1: token1,
             fee: 3000,
             tickLower: getMinTick(3000),
             tickUpper: getMaxTick(3000),
-            amount0Desired: amounts[0], // Adjusted amount for token0
-            amount1Desired: amounts[1], // Adjusted amount for token1
-            amount0Min: 0,
-            amount1Min: 0,
-            recipient: address(this),
-            deadline: block.timestamp + 1200
-        });
-
-        INonfungiblePositionManager(nonfungiblePositionManager).mint(params);
-
-        // Log token balances after adding liquidity
-        wethBalance = weth.balanceOf(address(this));
-        indexTokenBalance = indexToken.balanceOf(address(this));
-
-        console.log("WETH Balance After Adding Liquidity: ", wethBalance);
-        console.log("Index Token Balance After Adding Liquidity: ", indexTokenBalance);
-
-        console.log("Liquidity added for Index Token: ", address(indexToken));
-    }
-
-    function addLiquidity2(IERC20 indexToken, address weth, uint256 indexTokenAmount, uint256 wethAmount) internal {
-        wrapEthToWeth();
-
-        uint256 wethBalance = IERC20(weth).balanceOf(address(this));
-        uint256 indexTokenBalance = indexToken.balanceOf(address(this));
-
-        console.log("WETH Balance Before Adding Liquidity: ", wethBalance);
-        console.log("Index Token Balance Before Adding Liquidity: ", indexTokenBalance);
-
-        require(wethBalance >= wethAmount, "Not enough WETH for liquidity");
-        require(indexTokenBalance >= indexTokenAmount, "Not enough index tokens for liquidity");
-
-        // Determine token0 and token1
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(indexToken) < address(weth) ? address(indexToken) : address(weth);
-        tokens[1] = address(indexToken) > address(weth) ? address(indexToken) : address(weth);
-
-        // tokens[0] = address(token0) < address(weth) ? token0 : Token(weth);
-        // tokens[1] = address(token0) > address(weth) ? token0 : Token(weth);
-
-        uint256[] memory amounts = new uint256[](2);
-        amounts[0] = tokens[0] == address(indexToken) ? indexTokenAmount : wethAmount;
-        amounts[1] = tokens[1] == address(weth) ? wethAmount : indexTokenAmount;
-
-        // uint256[] memory amounts = new uint256[](2);
-        // amounts[0] = address(tokens[0]) == address(token0) ? amount0 : amount1;
-        // amounts[1] = address(tokens[1]) == address(token1) ? amount1 : amount0;
-
-        uint160 initialPrice = encodePriceSqrt(1000, 1);
-        console.log("Initial price sqrt: ", uint256(initialPrice));
-
-        address pool = uniswapV3Factory.getPool(tokens[0], tokens[1], 3000);
-
-        if (pool == address(0)) {
-            console.log("Pool does not exist, creating and initializing pool");
-
-            INonfungiblePositionManager(nonfungiblePositionManager).createAndInitializePoolIfNecessary(
-                tokens[0], tokens[1], 3000, initialPrice
-            );
-        } else {
-            console.log("Pool already exists: ", pool);
-        }
-
-        // Approve token transfers
-        IERC20(weth).approve(address(nonfungiblePositionManager), type(uint256).max);
-        indexToken.approve(address(nonfungiblePositionManager), type(uint256).max);
-
-        INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-            token0: tokens[0],
-            token1: tokens[1],
-            fee: 3000,
-            tickLower: getMinTick(3000),
-            tickUpper: getMaxTick(3000),
-            amount0Desired: amounts[0], // Adjusted amount for token0
-            amount1Desired: amounts[1], // Adjusted amount for token1
+            amount0Desired: amount0Desired,
+            amount1Desired: amount1Desired,
             amount0Min: 0,
             amount1Min: 0,
             recipient: address(this),
@@ -677,107 +473,8 @@ contract FeeManagerTest is Test {
 
         console.log("WETH Balance After Adding Liquidity: ", wethBalance);
         console.log("Index Token Balance After Adding Liquidity: ", indexTokenBalance);
-
         console.log("Liquidity added for Index Token: ", address(indexToken));
     }
-
-    // function addLiquidity(IERC20 indexToken) internal {
-    //     // Wrap ETH into WETH
-    //     wrapEthToWeth();
-
-    //     uint256 wethBalance = weth.balanceOf(address(this));
-    //     uint256 indexTokenBalance = indexToken.balanceOf(address(this));
-
-    //     require(wethBalance >= 5e18, "Not enough WETH for liquidity");
-    //     require(indexTokenBalance >= 1000e18, "Not enough index tokens for liquidity");
-
-    //     // Determine token0 and token1
-    //     address token0 = address(weth) < address(indexToken) ? address(weth) : address(indexToken);
-    //     address token1 = address(weth) > address(indexToken) ? address(weth) : address(indexToken);
-
-    //     uint160 initialPrice = encodePriceSqrt(1000, 1);
-    //     console.log("Initial price sqrt: ", uint256(initialPrice));
-
-    //     address pool = uniswapV3Factory.getPool(token0, token1, 3000);
-
-    //     if (pool == address(0)) {
-    //         console.log("Pool does not exist, creating and initializing pool");
-
-    //         INonfungiblePositionManager(nonfungiblePositionManager).createAndInitializePoolIfNecessary(
-    //             token0, token1, 3000, initialPrice
-    //         );
-    //     } else {
-    //         console.log("Pool already exists: ", pool);
-    //     }
-
-    //     weth.approve(address(nonfungiblePositionManager), type(uint256).max);
-    //     indexToken.approve(address(nonfungiblePositionManager), type(uint256).max);
-
-    //     // Set amount0Desired and amount1Desired based on whether the first token is WETH
-    //     uint256 amount0Desired;
-    //     uint256 amount1Desired;
-
-    //     if (token0 == address(weth)) {
-    //         amount0Desired = 10e18; // WETH as the first token
-    //         amount1Desired = 2000e18; // The other token
-    //     } else {
-    //         amount0Desired = 2000e18; // The other token
-    //         amount1Desired = 10e18; // WETH
-    //     }
-
-    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-    //         token0: token0,
-    //         token1: token1,
-    //         fee: 3000,
-    //         tickLower: getMinTick(3000),
-    //         tickUpper: getMaxTick(3000),
-    //         amount0Desired: amount0Desired,
-    //         amount1Desired: amount1Desired,
-    //         amount0Min: 0,
-    //         amount1Min: 0,
-    //         recipient: address(this),
-    //         deadline: block.timestamp + 1200
-    //     });
-
-    //     INonfungiblePositionManager(nonfungiblePositionManager).mint(params);
-    //     console.log("Liquidity added for Index Token ", address(indexToken));
-    // }
-
-    // function addLiquidity2(
-    //     address positionManager,
-    //     address factory,
-    //     Token token0,
-    //     Token token1,
-    //     uint256 amount0,
-    //     uint256 amount1
-    // ) public {
-    //     Token[] memory tokens = new Token[](2);
-    //     tokens[0] = address(token0) < address(token1) ? token0 : token1;
-    //     tokens[1] = address(token0) > address(token1) ? token0 : token1;
-    //     uint256[] memory amounts = new uint256[](2);
-    //     amounts[0] = address(tokens[0]) == address(token0) ? amount0 : amount1;
-    //     amounts[1] = address(tokens[1]) == address(token1) ? amount1 : amount0;
-    //     INonfungiblePositionManager(positionManager).createAndInitializePoolIfNecessary(
-    //         address(tokens[0]), address(tokens[1]), 3000, encodePriceSqrt(1, 1)
-    //     );
-    //     address poolAddress = IUniswapV3Factory2(factory).getPool(address(tokens[0]), address(tokens[1]), 3000);
-    //     tokens[0].approve(positionManager, amounts[0]);
-    //     tokens[1].approve(positionManager, amounts[1]);
-    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams(
-    //         address(tokens[0]),
-    //         address(tokens[1]),
-    //         3000,
-    //         getMinTick(3000),
-    //         getMaxTick(3000),
-    //         amounts[0],
-    //         amounts[1],
-    //         0,
-    //         0,
-    //         address(this),
-    //         block.timestamp
-    //     );
-    //     INonfungiblePositionManager(positionManager).mint(params);
-    // }
 
     function wrapEthToWeth() public {
         IWETH9 wethContract = IWETH9(address(weth));

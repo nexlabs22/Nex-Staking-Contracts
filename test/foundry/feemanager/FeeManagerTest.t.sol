@@ -215,9 +215,6 @@ contract FeeManagerTest is Test {
 
         deal(address(weth), address(feeManager), 10e18);
 
-        deal(address(indexTokens[0]), address(nexStaking), 1000e18);
-        deal(address(indexTokens[1]), address(nexStaking), 1000e18);
-
         address vault1 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
         address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[1]));
         deal(address(indexTokens[0]), vault1, 1000e18);
@@ -231,10 +228,17 @@ contract FeeManagerTest is Test {
         nexStaking.stake(address(indexTokens[1]), 1e18);
         vm.stopPrank();
 
-        // Call the function to distribute WETH to pools
         uint256 feeManagerBalance = weth.balanceOf(address(feeManager));
+        console.log("Balance of Weth Of Fee Manager", feeManagerBalance);
+
+        console.log("Balance of Index Token 0 Vault Before distribution:", indexTokens[0].balanceOf(vault1));
+        console.log("Balance of Index Token 1 Vault Before distribution:", indexTokens[1].balanceOf(vault2));
+
         feeManager._distributeWETHToPools(feeManagerBalance);
         console.log("Weth Distributed");
+
+        console.log("Balance of Index Token 0 Vault After distribution:", indexTokens[0].balanceOf(vault1));
+        console.log("Balance of Index Token 1 Vault After distribution:", indexTokens[1].balanceOf(vault2));
 
         console.log("-----------------testDistributeWETHToPools-----------------");
     }

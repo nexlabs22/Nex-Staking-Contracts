@@ -97,7 +97,9 @@ contract NexStakingTest is Test {
     }
 
     function testUnstakeAllTokensWithSameTokenReward() public {
+        // indexTokens[0].transferFrom(user, vault, 1000e18);
         vm.startPrank(user);
+        deal(address(indexTokens[0]), user, 1000e18);
 
         deal(address(indexTokens[0]), user, 500e18);
 
@@ -109,7 +111,11 @@ contract NexStakingTest is Test {
         address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), 500e18);
 
-        deal(address(indexTokens[0]), vault, 1000e18);
+        // vm.startPrank(user);
+        indexTokens[0].approve(vault, 1000e18);
+        indexTokens[0].approve(address(this), 1000e18);
+        // vm.stopPrank();
+        // deal(address(indexTokens[0]), vault, 1000e18);
 
         console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
 
@@ -124,11 +130,16 @@ contract NexStakingTest is Test {
         uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
         assertEq(remainingShares, 0, "All shares should be redeemed");
 
+        console.log("Vault balance at the end: ", indexTokens[0].balanceOf(vault));
+        console.log("User balance at the end: ", indexTokens[0].balanceOf(user));
+
         vm.stopPrank();
     }
 
     function testUnstakeSomeTokensWithSameTokenReward() public {
         vm.startPrank(user);
+
+        // deal(address(indexTokens[0]), address(this), 1000e18);
 
         deal(address(indexTokens[0]), user, 500e18);
         // User stakes 500 tokens
@@ -139,6 +150,8 @@ contract NexStakingTest is Test {
 
         address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
+
+        // indexTokens[0].transfer(vault, 1000e18);
 
         console.log("Vault total assets: ", ERC4626(vault).totalAssets());
 
@@ -170,9 +183,12 @@ contract NexStakingTest is Test {
     }
 
     function testUnstakeAllTokensWithDifferentRewardToken() public {
+        console.log(
+            "----------------------------testUnstakeAllTokensWithDifferentRewardToken----------------------------"
+        );
         vm.startPrank(user);
         deal(address(indexTokens[0]), user, 500e18);
-        // User stakes 500 tokens
+
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
@@ -216,7 +232,12 @@ contract NexStakingTest is Test {
         console.log("Remaining shares: ", remainingShares);
         assertEq(remainingShares, 0, "All shares should be redeemed");
 
+        console.log("Vault balance at the end: ", indexTokens[0].balanceOf(vault));
+
         vm.stopPrank();
+        console.log(
+            "----------------------------testUnstakeAllTokensWithDifferentRewardToken----------------------------"
+        );
     }
 
     function testUnstakeSomeTokensWithDifferentRewardToken() public {

@@ -705,7 +705,7 @@ contract NexStakingTest is Test {
     }
 
     function deployTokens() internal {
-        nexLabsToken = new MockERC20("NexLabs Token", "NEX", 18);
+        nexLabsToken = new MockERC20("NexLabs Token", "NEX");
         // usdc = new MockERC20("USD Coin", "USDC", 6);
 
         nexLabsToken.mint(address(this), 1e24);
@@ -714,9 +714,7 @@ contract NexStakingTest is Test {
         for (uint256 i = 0; i < 3; i++) {
             // Deploy index tokens
             MockERC20 indexToken = new MockERC20(
-                string(abi.encodePacked("Index Token ", uint8(i + 1))),
-                string(abi.encodePacked("IDX", uint8(i + 1))),
-                18
+                string(abi.encodePacked("Index Token ", uint8(i + 1))), string(abi.encodePacked("IDX", uint8(i + 1)))
             );
             indexTokens.push(indexToken);
 
@@ -729,9 +727,7 @@ contract NexStakingTest is Test {
             rewardTokens.push(indexToken);
 
             MockERC20 rewardToken = new MockERC20(
-                string(abi.encodePacked("Reward Token ", uint8(i + 1))),
-                string(abi.encodePacked("RWD", uint8(i + 1))),
-                18
+                string(abi.encodePacked("Reward Token ", uint8(i + 1))), string(abi.encodePacked("RWD", uint8(i + 1)))
             );
             rewardTokens.push(rewardToken);
 

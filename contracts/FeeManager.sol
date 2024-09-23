@@ -129,7 +129,7 @@ contract FeeManager is OwnableUpgradeable {
         }
     }
 
-    function calculateWeightOfPools() public returns (uint256[] memory) {
+    function calculateWeightOfPools() public view returns (uint256[] memory) {
         uint256 totalValueAcrossAllPools = getPortfolioBalance();
         uint256[] memory weights = new uint256[](poolTokensAddresses.length);
 

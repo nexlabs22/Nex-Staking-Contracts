@@ -17,7 +17,7 @@ contract ERC4626FactoryTest is Test {
         factory = new ERC4626Factory();
         factory.initialize();
 
-        token = new MockERC20("Mock Token", "MCK", 18);
+        token = new MockERC20("Mock Token", "MCK");
     }
 
     function testCreateVault() public {

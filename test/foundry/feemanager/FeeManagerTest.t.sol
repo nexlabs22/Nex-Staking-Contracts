@@ -90,17 +90,15 @@ contract FeeManagerTest is Test {
     }
 
     function deployTokens() internal {
-        nexLabsToken = new MockERC20("NexLabs Token", "NEX", 18);
-        usdc = new MockERC20("USD Coin", "USDC", 6);
+        nexLabsToken = new MockERC20("NexLabs Token", "NEX");
+        usdc = new MockERC20("USD Coin", "USDC");
 
         nexLabsToken.mint(address(this), 1e24);
         deal(address(usdc), address(this), 1e24);
 
         for (uint256 i = 0; i < 4; i++) {
             MockERC20 indexToken = new MockERC20(
-                string(abi.encodePacked("Index Token ", uint8(i + 1))),
-                string(abi.encodePacked("IDX", uint8(i + 1))),
-                18
+                string(abi.encodePacked("Index Token ", uint8(i + 1))), string(abi.encodePacked("IDX", uint8(i + 1)))
             );
             indexTokens.push(indexToken);
 
@@ -111,9 +109,7 @@ contract FeeManagerTest is Test {
             indexToken.mint(user, 100000e24);
 
             MockERC20 rewardToken = new MockERC20(
-                string(abi.encodePacked("Reward Token ", uint8(i + 1))),
-                string(abi.encodePacked("RWD", uint8(i + 1))),
-                18
+                string(abi.encodePacked("Reward Token ", uint8(i + 1))), string(abi.encodePacked("RWD", uint8(i + 1)))
             );
             rewardTokens.push(rewardToken);
 
@@ -136,7 +132,7 @@ contract FeeManagerTest is Test {
         erc4626Factory = new ERC4626Factory();
         console.log("ERC4626Factory deployed");
 
-        nexLabsToken = new MockERC20("NexLabs Token", "NEX", 18);
+        nexLabsToken = new MockERC20("NexLabs Token", "NEX");
 
         uint8[] memory swapVersions = new uint8[](indexTokens.length);
         for (uint256 i = 0; i < swapVersions.length; i++) {

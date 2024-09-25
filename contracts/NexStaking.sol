@@ -183,6 +183,11 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         emit Unstaked(msg.sender, tokenAddress, redeemableTokens, vault, sharesToRedeem, block.timestamp);
     }
 
+    function setFeePercent(uint8 newFeePercent) external onlyOwner {
+        require(newFeePercent <= 100, "Fee percent must be between 0 and 100.");
+        feePercent = newFeePercent;
+    }
+
     function _initializePools(
         address[] memory _indexTokensAddresses,
         address[] memory _rewardTokensAddresses,

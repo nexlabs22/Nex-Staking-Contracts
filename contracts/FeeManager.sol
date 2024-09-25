@@ -30,6 +30,7 @@ contract FeeManager is OwnableUpgradeable {
     address[] public rewardTokensAddresses;
     address[] public poolTokensAddresses;
 
+    mapping(address => bool) public supportedToken;
     mapping(address => uint8) public tokenSwapVersion;
 
     event RewardsDistributed(address indexed tokenAddress, uint256 amount, uint256 timestamp);
@@ -64,8 +65,11 @@ contract FeeManager is OwnableUpgradeable {
         require(_indexTokensAddresses.length == _swapVersions.length, "Swap versions array length mismatch");
 
         rewardTokensAddresses = _rewardTokensAddresses;
-        // poolTokensAddresses = nexStaking.poolTokensAddresses();
         poolTokensAddresses = _indexTokensAddresses;
+
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            supportedToken[poolTokensAddresses[i]] = true;
+        }
 
         _setSwapVersion(_indexTokensAddresses, _swapVersions);
     }
@@ -89,7 +93,7 @@ contract FeeManager is OwnableUpgradeable {
         _distributeWETHToPools(wethForStaking);
     }
 
-    function _swapRewardTokensToWETH() public {
+    function _swapRewardTokensToWETH() public /*internal*/ {
         for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
             uint256 tokenBalance = IERC20(rewardTokensAddresses[i]).balanceOf(address(this));
             if (tokenBalance > 0) {
@@ -101,13 +105,13 @@ contract FeeManager is OwnableUpgradeable {
         }
     }
 
-    function _swapWETHToUSDCAndTransfer(uint256 wethAmount) public {
+    function _swapWETHToUSDCAndTransfer(uint256 wethAmount) public /*internal*/ {
         uint256 swappedAmount = SwapHelpers.swapTokens(routerV3, address(weth), address(usdc), wethAmount);
         usdc.safeTransfer(owner(), swappedAmount);
         emit TransferToOwner(swappedAmount, block.timestamp);
     }
 
-    function _distributeWETHToPools(uint256 wethForStaking) public {
+    function _distributeWETHToPools(uint256 wethForStaking) public /*internal*/ {
         uint256[] memory poolWeights = calculateWeightOfPools();
 
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
@@ -167,6 +171,27 @@ contract FeeManager is OwnableUpgradeable {
         return totalValue;
     }
 
+    function predictAPY(address tokenAddress, uint256 etherAmount) external view returns (uint256 apy) {
+        require(supportedToken[tokenAddress], "Unsupported token.");
+
+        address pool = factoryV3.getPool(tokenAddress, address(weth), 3000);
+        require(pool != address(0), "Pool does not exist.");
+
+        address vault = nexStaking.tokenAddressToVaultAddress(tokenAddress);
+
+        uint256 totalTokenInPool = IERC20(tokenAddress).balanceOf(vault);
+
+        uint256 totalValueInEther = getAmountOut(tokenAddress, address(weth), totalTokenInPool, 3);
+
+        if (totalValueInEther > 0) {
+            apy = (etherAmount * 100) / totalValueInEther;
+        } else {
+            apy = 0;
+        }
+
+        return apy;
+    }
+
     function swapTokens(address tokenIn, address tokenOut, uint256 amountIn, address _recipient)
         public
         returns (uint256 amountOut)
@@ -206,8 +231,6 @@ contract FeeManager is OwnableUpgradeable {
                 finalAmountOut = v2amountOut[1];
             }
         }
-
-        console.log("Final Amount Out (WETH): ", finalAmountOut);
 
         return finalAmountOut;
     }

@@ -243,14 +243,12 @@ contract NexStakingTest is Test {
     function testUnstakeSomeTokensWithDifferentRewardToken() public {
         vm.startPrank(user);
 
-        // User stakes 500 tokens
         deal(address(indexTokens[0]), user, 500e18);
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
         uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-        // Approve NexStaking for redeeming shares from the vault
         address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
@@ -676,6 +674,17 @@ contract NexStakingTest is Test {
         uint256 expectedAmount = 1e18 - expectedFee;
         assertEq(fee, expectedFee, "Fee should be 3%");
         assertEq(amountAfterFee, expectedAmount, "Amount after fee should be 95%");
+    }
+
+    function testSetFeePercent() public {
+        uint8 initialFeePercent = 3;
+        uint8 newFeePercent = 10;
+
+        assertEq(nexStaking.feePercent(), initialFeePercent);
+
+        nexStaking.setFeePercent(newFeePercent);
+
+        assertEq(nexStaking.feePercent(), newFeePercent);
     }
 
     function testInitializeStaking() public {

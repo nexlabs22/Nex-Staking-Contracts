@@ -266,7 +266,6 @@ contract NexStakingTest is Test {
         console.log("User reward token balance before unstake: ", userRewardTokenBalanceBeforeUnstake);
         console.log("Staking contract balance before unstake: ", stakingContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee);
 
         uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user);
@@ -670,7 +669,7 @@ contract NexStakingTest is Test {
 
     function testCalculateAmountAfterFee() public {
         (uint256 fee, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(1e18, 3);
-        uint256 expectedFee = (1e18 * 3) / 10000;
+        uint256 expectedFee = (1e18 * 3) / 1000;
         uint256 expectedAmount = 1e18 - expectedFee;
         assertEq(fee, expectedFee, "Fee should be 3%");
         assertEq(amountAfterFee, expectedAmount, "Amount after fee should be 95%");

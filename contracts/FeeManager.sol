@@ -6,7 +6,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
-import {Test, console} from "forge-std/Test.sol";
 
 import {NexStaking} from "./NexStaking.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
@@ -217,9 +216,6 @@ contract FeeManager is OwnableUpgradeable {
         view
         returns (uint256 finalAmountOut)
     {
-        console.log("Converting from Token: ", tokenIn, " to WETH: ", tokenOut);
-        console.log("Amount In: ", amountIn);
-
         if (amountIn > 0) {
             if (_swapVersion == 3) {
                 finalAmountOut = estimateAmountOut(tokenIn, tokenOut, uint128(amountIn));

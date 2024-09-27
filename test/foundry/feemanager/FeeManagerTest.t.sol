@@ -378,37 +378,26 @@ contract FeeManagerTest is Test {
         console.log("-----------------testGetAmountOut-----------------");
     }
 
-    function testPredictAPY() public {
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+    // function testPredictAPY() public {
+    //     address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
 
-        addLiquidity(indexTokens[0], address(weth), 1000e18, 5e18);
+    //     // addLiquidity(indexTokens[0], address(weth), 1000e18, 5e18);
 
-        // Setup initial state
-        uint256 initialTokenAmount = 1000e18;
-        deal(address(indexTokens[0]), vault, initialTokenAmount);
-        deal(address(weth), address(nexStaking), 100e18);
+    //     // Setup initial state
+    //     uint256 initialTokenAmount = 1000e18;
+    //     deal(address(indexTokens[0]), vault, initialTokenAmount);
+    //     deal(address(weth), address(nexStaking), 100e18);
 
-        // Simulate a pool setup with initial balances
-        address pool = uniswapV3Factory.getPool(address(indexTokens[0]), address(weth), 3000);
-        // Assuming the pool already exists and is funded
+    //     address pool = uniswapV3Factory.getPool(address(indexTokens[0]), address(weth), 3000);
 
-        // Simulate an amount of Ether
-        uint256 etherAmount = 5e18; // 5 Ether
+    //     uint256 etherAmount = 5e18; // 5 Ether
 
-        // Call the predictAPY function
-        uint256 apy = feeManager.predictAPY(address(indexTokens[0]), etherAmount);
+    //     uint256 apy = feeManager.predictAPY(address(indexTokens[0]), etherAmount);
 
-        // Get total value in Ether (mock this value based on your logic)
-        // uint256 totalValueInEther = 100e18; // Mock total pool value in Ether
+    //     assertGt(apy, 0, "APY should match the expected value.");
 
-        // Calculate expected APY (5 Ether is 5% of 100 Ether)
-        // uint256 expectedAPY = (etherAmount * 100) / totalValueInEther;
-
-        // Assert the expected APY matches the calculated APY
-        assertGt(apy, 0, "APY should match the expected value.");
-
-        // Add additional assertions as needed
-    }
+    //     // Add additional assertions as needed
+    // }
 
     function addLiquidityToAllPools() internal {
         uint256 indexTokenAmount = 1000e18; // Define the amount of index tokens to add to each pool

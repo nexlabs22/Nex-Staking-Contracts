@@ -73,22 +73,18 @@ contract FeeManager is OwnableUpgradeable {
         _setSwapVersion(_indexTokensAddresses, _swapVersions);
     }
 
-    /// @dev This function checks and processes rewards distribution based on threshold
     function checkAndTransfer() external {
-        // Swap all reward tokens to WETH (ETH)
+        uint256 totalValueOfPoolsInWETH = getTotalValueOfIndexTokensInWETH();
+        require(totalValueOfPoolsInWETH >= threshold, "WETH balance is below the threshold");
+
         _swapRewardTokensToWETH();
 
         uint256 wethBalance = weth.balanceOf(address(this));
-        require(wethBalance >= threshold, "WETH balance is below the threshold");
-
-        // // Split the WETH balance
         uint256 wethForOwner = wethBalance / 2;
         uint256 wethForStaking = wethBalance - wethForOwner;
 
-        // Swap half of WETH to USDC and transfer to the owner
         _swapWETHToUSDCAndTransfer(wethForOwner);
 
-        // Distribute the other half of WETH to the staking pools based on pool weights
         _distributeWETHToPools(wethForStaking);
     }
 
@@ -97,8 +93,7 @@ contract FeeManager is OwnableUpgradeable {
             uint256 tokenBalance = IERC20(rewardTokensAddresses[i]).balanceOf(address(this));
             if (tokenBalance > 0) {
                 uint256 swappedAmount = swapTokens(rewardTokensAddresses[i], address(weth), tokenBalance, address(this));
-                // uint256 swappedAmount =
-                //     SwapHelpers.swapTokens(routerV3, rewardTokensAddresses[i], address(weth), tokenBalance);
+
                 emit TokensSwapped(rewardTokensAddresses[i], address(weth), tokenBalance, swappedAmount);
             }
         }
@@ -123,10 +118,6 @@ contract FeeManager is OwnableUpgradeable {
             }
 
             uint256 tokenAmountForPool = swapTokens(address(weth), poolTokensAddresses[i], wethAmountForPool, vault);
-            // uint256 tokenAmountForPool =
-            //     swapTokens(address(weth), poolTokensAddresses[i], wethAmountForPool, address(this));
-            // IERC20(poolTokensAddresses[i]).approve(vault, tokenAmountForPool);
-            // IERC20(poolTokensAddresses[i]).safeTransfer(vault, tokenAmountForPool);
 
             emit RewardsDistributed(poolTokensAddresses[i], tokenAmountForPool, block.timestamp);
         }
@@ -158,6 +149,22 @@ contract FeeManager is OwnableUpgradeable {
             address tokenAddress = poolTokensAddresses[i];
             address vault = nexStaking.tokenAddressToVaultAddress(tokenAddress);
             uint256 balance = IERC20(tokenAddress).balanceOf(vault);
+
+            if (tokenAddress == address(weth)) {
+                totalValue += balance;
+            } else {
+                uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+                totalValue += value;
+            }
+        }
+
+        return totalValue;
+    }
+
+    function getTotalValueOfIndexTokensInWETH() public view returns (uint256 totalValue) {
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            address tokenAddress = poolTokensAddresses[i];
+            uint256 balance = IERC20(tokenAddress).balanceOf(address(this));
 
             if (tokenAddress == address(weth)) {
                 totalValue += balance;

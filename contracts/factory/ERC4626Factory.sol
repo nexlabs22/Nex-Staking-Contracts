@@ -11,10 +11,10 @@ contract ERC4626Factory is OwnableUpgradeable {
     event VaultCreated(address indexed vault, address indexed underlyingAsset, string name, string symbol);
 
     function initialize() public initializer {
-        __Ownable_init(tx.origin);
+        __Ownable_init(msg.sender);
     }
 
-    function createERC4626Vault(address _underlyingAsset) external /*onlyOwner*/ returns (address) {
+    function createERC4626Vault(address _underlyingAsset) external onlyOwner returns (address) {
         require(_underlyingAsset != address(0), "Invalid underlying asset address");
 
         string memory symbol = ERC20(_underlyingAsset).symbol();

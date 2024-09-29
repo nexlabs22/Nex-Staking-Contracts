@@ -185,6 +185,12 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         feePercent = newFeePercent;
     }
 
+    function getUserShares(address user, address tokenAddress) public view returns (uint256) {
+        address vault = tokenAddressToVaultAddress[tokenAddress];
+        uint256 shares = ERC4626(vault).balanceOf(user);
+        return shares;
+    }
+
     function _initializePools(
         address[] memory _indexTokensAddresses,
         address[] memory _rewardTokensAddresses,
@@ -211,12 +217,6 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         returns (uint256 fee, uint256 amountAfterFee)
     {
         (fee, amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(amount, feePercent);
-    }
-
-    function getUserShares(address user, address tokenAddress) public view returns (uint256) {
-        address vault = tokenAddressToVaultAddress[tokenAddress];
-        uint256 shares = ERC4626(vault).balanceOf(user);
-        return shares;
     }
 
     function calculateUnstakePercentage(uint256 unstakeAmount, uint256 totalUserStake)

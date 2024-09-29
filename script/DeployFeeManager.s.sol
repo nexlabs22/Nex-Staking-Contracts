@@ -6,45 +6,52 @@ import {console} from "forge-std/Test.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 
+import {FeeManager} from "../contracts/FeeManager.sol";
 import {NexStaking} from "../contracts/NexStaking.sol";
 
-contract DeployNexStaking is Script {
+contract DeployFeeManager is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
 
         vm.startBroadcast(deployerPrivateKey);
 
-        address nexLabsTokenAddress = vm.envAddress("NEX_LABS_TOKEN");
+        address nexStakingAddress = vm.envAddress("NEX_STAKING_PROXY");
         address[] memory indexTokensAddresses = getIndexTokens();
         address[] memory rewardTokensAddresses = getRewardTokens();
         uint8[] memory swapVersions = getSwapVersions();
-        address erc4626Factory = vm.envAddress("ERC4626_FACTORY");
-        address uniswapV3Router = vm.envAddress("UNISWAP_V3_ROUTER");
+        address uniswapRouter = vm.envAddress("UNISWAP_ROUTER");
+        address uniswapV2Router = vm.envAddress("UNISWAP_V2_ROUTER");
+        address uniswapV3Factory = vm.envAddress("UNISWAP_V3_FACTORY");
+        address nonfungiblePositionManager = vm.envAddress("NONFUNGIBLE_POSITION_MANAGER");
         address weth = vm.envAddress("WETH");
-        uint8 feePercent = vm.envUint("FEE_PERCENT");
+        address usdc = vm.envAddress("USDC");
+        uint256 threshold = vm.envUint("THRESHOLD");
 
         ProxyAdmin proxyAdmin = new ProxyAdmin(msg.sender);
 
-        NexStaking nexStakingImplementation = new NexStaking();
+        FeeManager feeManagerImplementation = new FeeManager();
 
         bytes memory data = abi.encodeWithSignature(
-            "initialize(address,address[],address[],uint8[],address,address,address,uint8)",
-            nexLabsTokenAddress,
+            "initialize(address,address[],address[],uint8[],address,address,address,address,address,address,uint256)",
+            nexStakingAddress,
             indexTokensAddresses,
             rewardTokensAddresses,
             swapVersions,
-            erc4626Factory,
-            uniswapV3Router,
+            uniswapRouter,
+            uniswapV2Router,
+            uniswapV3Factory,
+            nonfungiblePositionManager,
             weth,
-            feePercent
+            usdc,
+            threshold
         );
 
         TransparentUpgradeableProxy proxy =
-            new TransparentUpgradeableProxy(address(nexStakingImplementation), address(proxyAdmin), data);
+            new TransparentUpgradeableProxy(address(feeManagerImplementation), address(proxyAdmin), data);
 
-        console.log("NexStaking implementation deployed at:", address(nexStakingImplementation));
-        console.log("NexStaking proxy deployed at:", address(proxy));
-        console.log("ProxyAdmin for NexStaking deployed at:", address(proxyAdmin));
+        console.log("FeeManager implementation deployed at:", address(feeManagerImplementation));
+        console.log("FeeManager proxy deployed at:", address(proxy));
+        console.log("ProxyAdmin deployed at:", address(proxyAdmin));
 
         vm.stopBroadcast();
     }
@@ -69,12 +76,10 @@ contract DeployNexStaking is Script {
     }
 
     function getSwapVersions() internal pure returns (uint8[] memory) {
-        uint8[] memory swapVersions = new uint8[](5);
+        uint8[] memory swapVersions = new uint8[](3);
         swapVersions[0] = 3;
         swapVersions[1] = 3;
         swapVersions[2] = 3;
-        swapVersions[3] = 3;
-        swapVersions[4] = 3;
         return swapVersions;
     }
 }

@@ -20,7 +20,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     ERC4626Factory public erc4626Factory;
     ISwapRouter public routerV3;
     IWETH9 public weth;
-    IERC20 public nexLabsToken;
+    // IERC20 public nexLabsToken;
 
     address[] public poolTokensAddresses;
     address[] public rewardTokensAddresses;
@@ -64,7 +64,6 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     );
 
     function initialize(
-        address _nexLabsTokenAddress,
         address[] memory _indexTokensAddresses,
         address[] memory _rewardTokensAddresses,
         uint8[] memory _swapVersions,
@@ -76,14 +75,14 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
 
-        require(_nexLabsTokenAddress != address(0), "Invalid address for _nexLabsAddress");
+        // require(_nexLabsTokenAddress != address(0), "Invalid address for _nexLabsAddress");
         require(_erc4626Factory != address(0), "Invalid address for _erc4626Factory");
         require(_weth != address(0), "Invalid address for _weth");
 
         erc4626Factory = ERC4626Factory(_erc4626Factory);
         routerV3 = ISwapRouter(_uniswapV3Router);
         weth = IWETH9(_weth);
-        nexLabsToken = IERC20(_nexLabsTokenAddress);
+        // nexLabsToken = IERC20(_nexLabsTokenAddress);
         feePercent = _feePercent;
 
         _initializePools(_indexTokensAddresses, _rewardTokensAddresses, _swapVersions);
@@ -92,9 +91,7 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     function stake(address tokenAddress, uint256 amount) external nonReentrant {
         StakePositions storage position = positions[msg.sender][tokenAddress];
         require(tokenAddress != address(0), "The token address is zero address");
-        require(
-            supportedTokens[tokenAddress] || tokenAddress == address(nexLabsToken), "Token not support for staking."
-        );
+        require(supportedTokens[tokenAddress], "Token not support for staking.");
         require(amount > 0, "Staking amount must be greater than zero.");
 
         (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(amount);
@@ -127,7 +124,8 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     function unstake(address tokenAddress, address rewardTokenAddress, uint256 unstakeAmount) external nonReentrant {
         StakePositions storage position = positions[msg.sender][tokenAddress];
         require(position.owner == msg.sender, "You are not the owner of this position.");
-        require(supportedTokens[tokenAddress] && supportedRewardTokens[rewardTokenAddress], "Unsupported tokens.");
+        // require(supportedTokens[tokenAddress] && supportedRewardTokens[rewardTokenAddress], "Unsupported tokens.");
+        require(rewardTokenAddress == tokenAddress || supportedRewardTokens[rewardTokenAddress]);
         require(position.stakeAmount > 0, "No stake amount to unstake.");
         require(unstakeAmount > 0 && unstakeAmount <= position.stakeAmount, "Invalid amount to unstake.");
 

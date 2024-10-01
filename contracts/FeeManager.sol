@@ -58,7 +58,8 @@ contract FeeManager is OwnableUpgradeable {
         nonfungiblePositionManager = INonfungiblePositionManager(_nonfungiblePositionManager);
         weth = IWETH9(_weth);
         usdc = IERC20(_usdc);
-        threshold = _threshold * 10 ** 18;
+        // threshold = _threshold * 10 ** 18;
+        threshold = _threshold;
         factoryV3 = IUniswapV3Factory(_uniswapV3Factory);
 
         require(_indexTokensAddresses.length == _swapVersions.length, "Swap versions array length mismatch");
@@ -74,6 +75,9 @@ contract FeeManager is OwnableUpgradeable {
     }
 
     function checkAndTransfer() external {
+        uint256 balance = address(this).balance;
+        weth.deposit{value: balance}();
+
         uint256 totalValueOfPoolsInWETH = getTotalValueOfIndexTokensInWETH();
         require(totalValueOfPoolsInWETH >= threshold, "WETH balance is below the threshold");
 

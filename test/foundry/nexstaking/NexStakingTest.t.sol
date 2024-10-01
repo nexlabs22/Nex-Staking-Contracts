@@ -688,7 +688,7 @@ contract NexStakingTest is Test {
 
     function testInitializeStaking() public {
         // Check the NexLabs Token
-        assertEq(address(nexStaking.nexLabsToken()), address(nexLabsToken), "NexLabs Token is incorrect");
+        // assertEq(address(nexStaking.nexLabsToken()), address(nexLabsToken), "NexLabs Token is incorrect");
 
         // Check the pool tokens (index tokens)
         assertEq(nexStaking.poolTokensAddresses(0), address(indexTokens[0]), "Index Token 1 is incorrect");
@@ -768,7 +768,7 @@ contract NexStakingTest is Test {
 
         // Initialize NexStaking
         nexStaking.initialize(
-            address(nexLabsToken), // NexLabs token address
+            // address(nexLabsToken), // NexLabs token address
             addressArray(indexTokens), // Supported staking tokens
             addressArray(rewardTokens), // Supported reward tokens
             swapVersions, // Versions of the swap mechanism (e.g., Uniswap V3)

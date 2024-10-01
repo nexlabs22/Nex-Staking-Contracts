@@ -72,7 +72,8 @@ contract FeeManagerTest is Test {
         assertEq(address(feeManager.routerV2()), unsiwapV2Router, "Uniswap V2 Router is incorrect");
         assertEq(address(feeManager.weth()), wethAddress, "WETH address is incorrect");
         assertEq(address(feeManager.usdc()), address(usdc), "USDC address is incorrect");
-        assertEq(feeManager.threshold(), 1 * 1e18, "Threshold is incorrect");
+        assertEq(feeManager.threshold(), 1, "Threshold is incorrect");
+        // assertEq(feeManager.threshold(), 1 * 1e18, "Threshold is incorrect");
 
         assertEq(feeManager.poolTokensAddresses(0), address(indexTokens[0]), "Index token 1 is incorrect");
         assertEq(feeManager.poolTokensAddresses(1), address(indexTokens[1]), "Index token 2 is incorrect");
@@ -130,7 +131,7 @@ contract FeeManagerTest is Test {
         }
 
         nexStaking.initialize(
-            address(nexLabsToken),
+            // address(nexLabsToken),
             addressArray(indexTokens),
             addressArray(rewardTokens),
             swapVersions,
@@ -355,6 +356,11 @@ contract FeeManagerTest is Test {
 
     function testCheckAndTransfer() public {
         console.log("-----------------testCheckAndTransfer-----------------");
+
+        deal(address(feeManager), 11111 ether);
+
+        deal(address(indexTokens[0]), address(feeManager), 1000e18);
+        deal(address(indexTokens[1]), address(feeManager), 1000e18);
 
         address vault1 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
         address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[1]));

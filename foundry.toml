@@ -1,6 +1,6 @@
 [profile.default]
 optimizer = true
-optimizer_runs = 200
+optimizer_runs = 99999
 evm_version = 'istanbul'
 ffi = true
 ast = true

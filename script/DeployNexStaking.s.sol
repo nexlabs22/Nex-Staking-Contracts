@@ -74,12 +74,12 @@ contract DeployNexStaking is Script {
     }
 
     function getSwapVersions() internal pure returns (uint8[] memory) {
-        uint8[] memory swapVersions = new uint8[](5);
+        uint8[] memory swapVersions = new uint8[](4);
         swapVersions[0] = 3;
         swapVersions[1] = 3;
         swapVersions[2] = 3;
         swapVersions[3] = 3;
-        swapVersions[4] = 3;
+        // swapVersions[4] = 3;
         return swapVersions;
     }
 }

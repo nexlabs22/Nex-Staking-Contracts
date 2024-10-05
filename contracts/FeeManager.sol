@@ -154,32 +154,66 @@ contract FeeManager is OwnableUpgradeable {
             address vault = nexStaking.tokenAddressToVaultAddress(tokenAddress);
             uint256 balance = IERC20(tokenAddress).balanceOf(vault);
 
-            if (tokenAddress == address(weth)) {
-                totalValue += balance;
-            } else {
-                uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-                totalValue += value;
-            }
+            // if (tokenAddress == address(weth)) {
+            //     totalValue += balance;
+            // } else {
+            //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+            //     totalValue += value;
+            // }
+
+            uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+            totalValue += value;
         }
 
         return totalValue;
     }
 
     function getTotalValueOfIndexTokensInWETH() public view returns (uint256 totalValue) {
-        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
-            address tokenAddress = poolTokensAddresses[i];
+        for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
+            address tokenAddress = rewardTokensAddresses[i];
             uint256 balance = IERC20(tokenAddress).balanceOf(address(this));
 
-            if (tokenAddress == address(weth)) {
-                totalValue += balance;
-            } else {
-                uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-                totalValue += value;
-            }
+            // if (tokenAddress == address(weth)) {
+            //     totalValue += balance;
+            // } else {
+            //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+            //     totalValue += value;
+            // }
+
+            // uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+            uint256 value = getAmountOut(tokenAddress, address(weth), balance, 3);
+            totalValue += value;
         }
+        uint256 ethBalance = address(this).balance;
+        uint256 wethBalance = weth.balanceOf(address(this));
+        totalValue += ethBalance;
+        totalValue += wethBalance;
 
         return totalValue;
     }
+
+    // function getTotalValueOfIndexTokensInWETH() public view returns (uint256 totalValue) {
+    //     for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+    //         address tokenAddress = poolTokensAddresses[i];
+    //         uint256 balance = IERC20(tokenAddress).balanceOf(address(this));
+
+    //         // if (tokenAddress == address(weth)) {
+    //         //     totalValue += balance;
+    //         // } else {
+    //         //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+    //         //     totalValue += value;
+    //         // }
+
+    //         uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+    //         totalValue += value;
+    //     }
+    //     uint256 ethBalance = address(this).balance;
+    //     uint256 wethBalance = weth.balanceOf(address(this));
+    //     totalValue += ethBalance;
+    //     totalValue += wethBalance;
+
+    //     return totalValue;
+    // }
 
     function predictAPY(address tokenAddress, uint256 etherAmount) external view returns (uint256 apy) {
         require(supportedToken[tokenAddress], "Unsupported token.");

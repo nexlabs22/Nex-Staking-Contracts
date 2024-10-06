@@ -41,9 +41,13 @@ contract DeployNexStaking is Script {
         TransparentUpgradeableProxy proxy =
             new TransparentUpgradeableProxy(address(nexStakingImplementation), address(proxyAdmin), data);
 
-        nexStakingImplementation.initialize(
+        NexStaking(address(proxy)).initialize(
             indexTokensAddresses, rewardTokensAddresses, swapVersions, erc4626Factory, uniswapV3Router, weth, feePercent
         );
+
+        // nexStakingImplementation.initialize(
+        //     indexTokensAddresses, rewardTokensAddresses, swapVersions, erc4626Factory, uniswapV3Router, weth, feePercent
+        // );
 
         // nexStakingImplementation.transferOwnership(msg.sender);
 

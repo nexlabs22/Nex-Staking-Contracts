@@ -45,6 +45,8 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         address indexed user,
         address indexed tokenAddress,
         uint256 indexed amount,
+        uint256 totalStakedAmount,
+        uint256 poolSize,
         address vault,
         uint256 shares,
         uint256 timestamp
@@ -53,11 +55,23 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     event Unstaked(
         address indexed user,
         address indexed tokenAddress,
-        uint256 indexed amount,
+        uint256 unstakedAmount,
+        uint256 rewardAmount,
+        uint256 poolSize,
         address vault,
-        uint256 shares,
+        uint256 sharesRedeemed,
         uint256 timestamp
     );
+
+    // event Unstaked(
+    //     address indexed user,
+    //     address indexed tokenAddress,
+    //     uint256 indexed amount,
+    //     uint256 poolSize,
+    //     address vault,
+    //     uint256 shares,
+    //     uint256 timestamp
+    // );
 
     event RewardTokensSwapped(
         address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut, address user
@@ -104,8 +118,10 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
         uint256 shares = ERC4626(vault).deposit(amountAfterFee, msg.sender);
 
+        uint256 totalStakedAmount = 0;
         if (position.stakeAmount > 0) {
             position.stakeAmount += amountAfterFee;
+            totalStakedAmount = position.stakeAmount;
         } else {
             positions[msg.sender][tokenAddress] = StakePositions({
                 owner: msg.sender,
@@ -116,15 +132,20 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
             });
 
             numberOfStakersByTokenAddress[tokenAddress] += 1;
+
+            totalStakedAmount = amountAfterFee;
         }
 
-        emit Staked(msg.sender, tokenAddress, amountAfterFee, vault, shares, block.timestamp);
+        uint256 poolSize = ERC4626(vault).totalAssets();
+
+        emit Staked(
+            msg.sender, tokenAddress, amountAfterFee, totalStakedAmount, poolSize, vault, shares, block.timestamp
+        );
     }
 
     function unstake(address tokenAddress, address rewardTokenAddress, uint256 unstakeAmount) external nonReentrant {
         StakePositions storage position = positions[msg.sender][tokenAddress];
         require(position.owner == msg.sender, "You are not the owner of this position.");
-        // require(supportedTokens[tokenAddress] && supportedRewardTokens[rewardTokenAddress], "Unsupported tokens.");
         require(rewardTokenAddress == tokenAddress || supportedRewardTokens[rewardTokenAddress]);
         require(position.stakeAmount > 0, "No stake amount to unstake.");
         require(unstakeAmount > 0 && unstakeAmount <= position.stakeAmount, "Invalid amount to unstake.");
@@ -135,6 +156,8 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         uint256 unstakePercentage = calculateUnstakePercentage(unstakeAmount, totalUserStake);
 
         uint256 sharesToRedeem = calculateSharesToRedeem(vault, unstakePercentage);
+
+        position.stakeAmount -= unstakeAmount;
 
         uint256 redeemableTokens = ERC4626(vault).redeem(sharesToRedeem, address(this), msg.sender);
 
@@ -168,14 +191,21 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
             }
         }
 
-        IERC20(tokenAddress).safeTransfer(owner(), fee);
+        if (fee > 0) {
+            IERC20(tokenAddress).safeTransfer(owner(), fee);
+        }
 
         if (ERC4626(vault).balanceOf(msg.sender) == 0) {
             delete positions[msg.sender][tokenAddress];
             numberOfStakersByTokenAddress[tokenAddress] -= 1;
         }
 
-        emit Unstaked(msg.sender, tokenAddress, redeemableTokens, vault, sharesToRedeem, block.timestamp);
+        uint256 poolSize = ERC4626(vault).totalAssets();
+
+        // emit Unstaked(msg.sender, tokenAddress, redeemableTokens, poolSize, vault, sharesToRedeem, block.timestamp);
+        emit Unstaked(
+            msg.sender, tokenAddress, unstakeAmount, totalReward, poolSize, vault, sharesToRedeem, block.timestamp
+        );
     }
 
     function setFeePercent(uint8 newFeePercent) external onlyOwner {
@@ -187,6 +217,43 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         address vault = tokenAddressToVaultAddress[tokenAddress];
         uint256 shares = ERC4626(vault).balanceOf(user);
         return shares;
+    }
+
+    function getPureRewardAmount(address tokenAddress, address userAddress, uint256 amount)
+        public
+        view
+        returns (uint256)
+    {
+        StakePositions storage position = positions[userAddress][tokenAddress];
+        uint256 totalUserStake = position.stakeAmount;
+
+        require(totalUserStake > 0, "No stake amount to unstake.");
+        require(amount > 0 && amount <= totalUserStake, "Invalid amount to unstake.");
+
+        address vault = tokenAddressToVaultAddress[tokenAddress];
+        uint256 unstakePercentage = calculateUnstakePercentage(amount, totalUserStake);
+        uint256 sharesToRedeem = calculateSharesToRedeemForUser(vault, userAddress, unstakePercentage);
+        uint256 redeemAmount = ERC4626(vault).previewRedeem(sharesToRedeem);
+        uint256 rewardAmount = redeemAmount > amount ? redeemAmount - amount : 0;
+
+        return rewardAmount;
+    }
+
+    function getSharesToRedeemAmount(address tokenAddress, address userAddress, uint256 amount)
+        public
+        view
+        returns (uint256)
+    {
+        StakePositions storage position = positions[userAddress][tokenAddress];
+        uint256 totalUserStake = position.stakeAmount;
+
+        require(totalUserStake > 0, "No stake amount to unstake.");
+        require(amount > 0 && amount <= totalUserStake, "Invalid amount to unstake.");
+
+        address vault = tokenAddressToVaultAddress[tokenAddress];
+        uint256 unstakePercentage = calculateUnstakePercentage(amount, totalUserStake);
+        uint256 sharesToRedeem = calculateSharesToRedeemForUser(vault, userAddress, unstakePercentage);
+        return sharesToRedeem;
     }
 
     function _initializePools(
@@ -227,6 +294,15 @@ contract NexStaking is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     function calculateSharesToRedeem(address vault, uint256 unstakePercentage) internal view returns (uint256) {
         uint256 userShares = ERC4626(vault).balanceOf(msg.sender);
+        return (userShares * unstakePercentage) / 1e18;
+    }
+
+    function calculateSharesToRedeemForUser(address vault, address userAddress, uint256 unstakePercentage)
+        internal
+        view
+        returns (uint256)
+    {
+        uint256 userShares = ERC4626(vault).balanceOf(userAddress);
         return (userShares * unstakePercentage) / 1e18;
     }
 }

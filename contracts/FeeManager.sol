@@ -236,6 +236,16 @@ contract FeeManager is OwnableUpgradeable {
         return apy;
     }
 
+    function getAmountOutForRewardAmount(address tokenIn, address tokenOut, uint256 amountIn)
+        public
+        view
+        returns (uint256)
+    {
+        uint256 amount1 = getAmountOut(tokenIn, address(weth), amountIn, 3);
+        uint256 amount2 = getAmountOut(address(weth), tokenOut, amount1, 3);
+        return amount2;
+    }
+
     function swapTokens(address tokenIn, address tokenOut, uint256 amountIn, address _recipient)
         public
         returns (uint256 amountOut)

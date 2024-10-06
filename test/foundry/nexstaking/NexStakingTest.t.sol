@@ -247,6 +247,8 @@ contract NexStakingTest is Test {
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
+        (,,, uint256 stakeAmountAfterStake,) = nexStaking.positions(user, address(indexTokens[0]));
+
         uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
         address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
@@ -268,6 +270,8 @@ contract NexStakingTest is Test {
 
         nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee);
 
+        (,,, uint256 stakeAmountAfterUnStake,) = nexStaking.positions(user, address(indexTokens[0]));
+
         uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user);
         uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
 
@@ -284,6 +288,7 @@ contract NexStakingTest is Test {
         console.log("Remaining shares: ", remainingShares);
 
         assertEq(remainingShares, expectedRemainingShares, "All shares should be redeemed");
+        assertLt(stakeAmountAfterUnStake, stakeAmountAfterStake);
 
         vm.stopPrank();
     }
@@ -687,14 +692,9 @@ contract NexStakingTest is Test {
     }
 
     function testInitializeStaking() public {
-        // Check the NexLabs Token
-        // assertEq(address(nexStaking.nexLabsToken()), address(nexLabsToken), "NexLabs Token is incorrect");
-
-        // Check the pool tokens (index tokens)
         assertEq(nexStaking.poolTokensAddresses(0), address(indexTokens[0]), "Index Token 1 is incorrect");
         assertEq(nexStaking.poolTokensAddresses(1), address(indexTokens[1]), "Index Token 2 is incorrect");
 
-        // Check the reward tokens (remember index tokens are included)
         assertEq(
             nexStaking.rewardTokensAddresses(0),
             address(indexTokens[0]),
@@ -764,6 +764,55 @@ contract NexStakingTest is Test {
         uint256 expectedRewardAmount = redeemAmount > amountAfterFee ? redeemAmount - amountAfterFee : 0;
 
         assertEq(rewardAmount, expectedRewardAmount, "Reward amount should match expected value");
+
+        vm.stopPrank();
+    }
+
+    function testStakeAndUnstakeStateUpdates() public {
+        vm.startPrank(user);
+
+        deal(address(indexTokens[0]), user, 1000e18);
+        indexTokens[0].approve(address(nexStaking), 1000e18);
+        nexStaking.stake(address(indexTokens[0]), 1000e18);
+
+        (,,, uint256 stakeAmountAfterStake,) = nexStaking.positions(user, address(indexTokens[0]));
+
+        uint8 feePercent = nexStaking.feePercent();
+        (, uint256 amountAfterStakeFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(1000e18, feePercent);
+
+        assertEq(stakeAmountAfterStake, amountAfterStakeFee, "Stake amount should match amount after fee");
+
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        ERC4626(vault).approve(address(nexStaking), type(uint256).max);
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        uint256 unstakeAmount = 500e18;
+
+        (, uint256 amountAfterUnstakeFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(unstakeAmount, feePercent);
+
+        nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterUnstakeFee);
+
+        (,,, uint256 stakeAmountAfterUnStake,) = nexStaking.positions(user, address(indexTokens[0]));
+
+        uint256 expectedRemainingStake = stakeAmountAfterStake - amountAfterUnstakeFee;
+
+        assertEq(
+            stakeAmountAfterUnStake, expectedRemainingStake, "Stake amount should be reduced by the unstaked amount"
+        );
+
+        if (expectedRemainingStake == 0) {
+            (address ownerAfterUnstake,,,,) = nexStaking.positions(user, address(indexTokens[0]));
+            assertEq(ownerAfterUnstake, address(0), "Position should be deleted when stake amount is zero");
+        }
+
+        uint256 remainingShares = nexStaking.getUserShares(user, address(indexTokens[0]));
+        uint256 expectedRemainingShares = ERC4626(vault).balanceOf(user);
+
+        assertEq(
+            remainingShares,
+            expectedRemainingShares,
+            "Remaining shares should match expected remaining shares after unstake"
+        );
 
         vm.stopPrank();
     }

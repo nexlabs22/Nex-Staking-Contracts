@@ -668,10 +668,10 @@ contract NexStakingTest is Test {
     }
 
     function testCalculateAmountAfterFee() public {
-        (uint256 fee, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(1e18, 3);
-        uint256 expectedFee = (1e18 * 3) / 1000;
+        (uint256 fee, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(1e18, 1);
+        uint256 expectedFee = (1e18 * 1) / 10000;
         uint256 expectedAmount = 1e18 - expectedFee;
-        assertEq(fee, expectedFee, "Fee should be 3%");
+        assertEq(fee, expectedFee, "Fee should be 0.1%");
         assertEq(amountAfterFee, expectedAmount, "Amount after fee should be 95%");
     }
 
@@ -710,6 +710,62 @@ contract NexStakingTest is Test {
             address(indexTokens[1]),
             "Reward Token 3 is incorrect (should be Index Token 2)"
         );
+    }
+
+    function testGetSharesToRedeemAmount() public {
+        vm.startPrank(user);
+
+        deal(address(indexTokens[0]), user, 1000e18);
+        indexTokens[0].approve(address(nexStaking), 1000e18);
+        nexStaking.stake(address(indexTokens[0]), 1000e18);
+
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        uint256 amountToUnstake = 500e18;
+
+        (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(amountToUnstake, 3);
+
+        uint256 sharesToRedeem = nexStaking.getSharesToRedeemAmount(address(indexTokens[0]), user, amountAfterFee);
+
+        uint256 totalUserStake = 1000e18;
+        (, uint256 totalAmountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(totalUserStake, 3);
+        uint256 unstakePercentage = (amountAfterFee * 1e18) / totalAmountAfterFee;
+
+        uint256 userShares = ERC4626(vault).balanceOf(user);
+
+        uint256 expectedSharesToRedeem = (userShares * unstakePercentage) / 1e18;
+
+        assertEq(sharesToRedeem, expectedSharesToRedeem, "Shares to redeem should match expected value");
+
+        vm.stopPrank();
+    }
+
+    function testGetPureRewardAmount() public {
+        vm.startPrank(user);
+
+        deal(address(indexTokens[0]), user, 1000e18);
+        indexTokens[0].approve(address(nexStaking), 1000e18);
+        nexStaking.stake(address(indexTokens[0]), 1000e18);
+
+        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        deal(address(indexTokens[0]), vault, 1000e18);
+
+        uint256 amountToUnstake = 500e18;
+
+        (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(amountToUnstake, 3);
+
+        uint256 rewardAmount = nexStaking.getPureRewardAmount(address(indexTokens[0]), user, amountAfterFee);
+
+        uint256 sharesToRedeem = nexStaking.getSharesToRedeemAmount(address(indexTokens[0]), user, amountAfterFee);
+
+        uint256 redeemAmount = ERC4626(vault).previewRedeem(sharesToRedeem);
+
+        uint256 expectedRewardAmount = redeemAmount > amountAfterFee ? redeemAmount - amountAfterFee : 0;
+
+        assertEq(rewardAmount, expectedRewardAmount, "Reward amount should match expected value");
+
+        vm.stopPrank();
     }
 
     function deployTokens() internal {

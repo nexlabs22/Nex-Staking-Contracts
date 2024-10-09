@@ -1,20 +1,23 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.26;
 
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {Script} from "forge-std/Script.sol";
-import {console} from "forge-std/Test.sol";
-import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {NexStaking} from "../contracts/NexStaking.sol";
 
-contract DeployNexStaking is Script {
-    function run() external {
+contract DeployUUPSNexStaking is Script {
+    function run() external returns (address) {
+        address proxy = deployNexStaking();
+        return proxy;
+    }
+
+    function deployNexStaking() public returns (address) {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
 
-        vm.startBroadcast(deployerPrivateKey);
-
-        // address nexLabsTokenAddress = vm.envAddress("NEX_LABS_TOKEN");
         address[] memory indexTokensAddresses = getIndexTokens();
         address[] memory rewardTokensAddresses = getRewardTokens();
         uint8[] memory swapVersions = getSwapVersions();
@@ -22,10 +25,6 @@ contract DeployNexStaking is Script {
         address uniswapV3Router = vm.envAddress("TESTNET_UNISWAP_V3_ROUTER");
         address weth = vm.envAddress("TESTNET_WETH");
         uint8 feePercent = uint8(vm.envUint("FEE_PERCENT"));
-
-        ProxyAdmin proxyAdmin = new ProxyAdmin(0x51256F5459C1DdE0C794818AF42569030901a098);
-
-        NexStaking nexStakingImplementation = new NexStaking();
 
         bytes memory data = abi.encodeWithSignature(
             "initialize(address[],address[],uint8[],address,address,address,uint8)",
@@ -38,24 +37,15 @@ contract DeployNexStaking is Script {
             feePercent
         );
 
-        TransparentUpgradeableProxy proxy =
-            new TransparentUpgradeableProxy(address(nexStakingImplementation), address(proxyAdmin), data);
-
-        // NexStaking(address(proxyAdmin)).initialize(
+        vm.startBroadcast(deployerPrivateKey);
+        NexStaking nexStaking = new NexStaking();
+        ERC1967Proxy proxy = new ERC1967Proxy(address(nexStaking), data);
+        // NexStaking(address(proxy)).initialize(
         //     indexTokensAddresses, rewardTokensAddresses, swapVersions, erc4626Factory, uniswapV3Router, weth, feePercent
         // );
-
-        nexStakingImplementation.initialize(
-            indexTokensAddresses, rewardTokensAddresses, swapVersions, erc4626Factory, uniswapV3Router, weth, feePercent
-        );
-
-        // nexStakingImplementation.transferOwnership(msg.sender);
-
-        console.log("NexStaking implementation deployed at:", address(nexStakingImplementation));
-        console.log("NexStaking proxy deployed at:", address(proxy));
-        console.log("ProxyAdmin for NexStaking deployed at:", address(proxyAdmin));
-
         vm.stopBroadcast();
+
+        return address(proxy);
     }
 
     function getIndexTokens() internal pure returns (address[] memory) {

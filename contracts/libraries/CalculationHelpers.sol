@@ -18,6 +18,7 @@ library CalculationHelpers {
         returns (uint256 fee, uint256 amountAfterFee)
     {
         fee = (amount * feePercent) / 10000;
+        // fee = (amount * feePercent) / 1000;
         amountAfterFee = amount - fee;
     }
 }

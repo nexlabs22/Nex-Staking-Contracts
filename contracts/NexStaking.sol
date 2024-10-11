@@ -8,20 +8,21 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {ReentrancyGuardUpgradeable} from
     "@openzeppelin/contracts-upgradeable/contracts/utils/ReentrancyGuardUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 
-import {ProposableOwnableUpgradeable} from "./proposable/ProposableOwnableUpgradeable.sol";
 import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
 import {CalculationHelpers} from "./libraries/CalculationHelpers.sol";
 import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 
-contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     ERC4626Factory public erc4626Factory;
     ISwapRouter public routerV3;
     IWETH9 public weth;
-    IERC20 public nexLabsToken;
+    // IERC20 public nexLabsToken;
 
     address[] public poolTokensAddresses;
     address[] public rewardTokensAddresses;
@@ -46,8 +47,10 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         address indexed user,
         address indexed tokenAddress,
         uint256 indexed amount,
+        uint256 totalStakedAmount,
+        uint256 poolSize,
         address vault,
-        uint256 shares,
+        uint256 sharesMinted,
         uint256 timestamp
     );
 
@@ -55,8 +58,11 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         address indexed user,
         address indexed tokenAddress,
         uint256 indexed amount,
+        uint256 totalStakedAmount,
+        uint256 rewardAmount,
+        uint256 poolSize,
         address vault,
-        uint256 shares,
+        uint256 sharesBurned,
         uint256 timestamp
     );
 
@@ -64,8 +70,12 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut, address user
     );
 
+    // /// @custom:oz-upgrades-unsafe-allow constructor
+    // constructor() {
+    //     _disableInitializers();
+    // }
+
     function initialize(
-        address _nexLabsTokenAddress,
         address[] memory _indexTokensAddresses,
         address[] memory _rewardTokensAddresses,
         uint8[] memory _swapVersions,
@@ -75,17 +85,23 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         uint8 _feePercent
     ) public initializer {
         __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
 
-        require(_nexLabsTokenAddress != address(0), "Invalid address for _nexLabsAddress");
+        // require(_nexLabsTokenAddress != address(0), "Invalid address for _nexLabsAddress");
         require(_erc4626Factory != address(0), "Invalid address for _erc4626Factory");
         require(_weth != address(0), "Invalid address for _weth");
 
         erc4626Factory = ERC4626Factory(_erc4626Factory);
         routerV3 = ISwapRouter(_uniswapV3Router);
         weth = IWETH9(_weth);
-        nexLabsToken = IERC20(_nexLabsTokenAddress);
+        // nexLabsToken = IERC20(_nexLabsTokenAddress);
         feePercent = _feePercent;
+
+        require(
+            _indexTokensAddresses.length == _swapVersions.length,
+            "Index tokens and swap versions must have the same length"
+        );
 
         _initializePools(_indexTokensAddresses, _rewardTokensAddresses, _swapVersions);
     }
@@ -93,23 +109,23 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
     function stake(address tokenAddress, uint256 amount) external nonReentrant {
         StakePositions storage position = positions[msg.sender][tokenAddress];
         require(tokenAddress != address(0), "The token address is zero address");
-        require(
-            supportedTokens[tokenAddress] || tokenAddress == address(nexLabsToken), "Token not support for staking."
-        );
+        require(supportedTokens[tokenAddress], "Token not support for staking.");
         require(amount > 0, "Staking amount must be greater than zero.");
 
         (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(amount);
-
         IERC20(tokenAddress).safeTransferFrom(msg.sender, owner(), fee);
+
         address vault = tokenAddressToVaultAddress[tokenAddress];
 
         IERC20(tokenAddress).approve(vault, amountAfterFee);
-        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), amountAfterFee); // Transfer to NexStaking first
-        uint256 shares = ERC4626(vault).deposit(amountAfterFee, msg.sender);
-        // uint256 shares = ERC4626(vault).deposit(amountAfterFee, tx.origin);
+        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), amountAfterFee);
 
+        uint256 shares = ERC4626(vault).deposit(amountAfterFee, msg.sender);
+
+        uint256 totalStakedAmount = 0;
         if (position.stakeAmount > 0) {
             position.stakeAmount += amountAfterFee;
+            totalStakedAmount = position.stakeAmount;
         } else {
             positions[msg.sender][tokenAddress] = StakePositions({
                 owner: msg.sender,
@@ -120,136 +136,137 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
             });
 
             numberOfStakersByTokenAddress[tokenAddress] += 1;
+
+            totalStakedAmount = amountAfterFee;
         }
 
-        emit Staked(msg.sender, tokenAddress, amountAfterFee, vault, shares, block.timestamp);
+        uint256 poolSize = ERC4626(vault).totalAssets();
+
+        emit Staked(
+            msg.sender, tokenAddress, amountAfterFee, totalStakedAmount, poolSize, vault, shares, block.timestamp
+        );
     }
 
-    function unstake(address tokenAddress, address rewardTokenAddress, uint256 amount) external nonReentrant {
+    function unstake(address tokenAddress, address rewardTokenAddress, uint256 unstakeAmount) external nonReentrant {
         StakePositions storage position = positions[msg.sender][tokenAddress];
         require(position.owner == msg.sender, "You are not the owner of this position.");
-        require(supportedTokens[tokenAddress] && supportedRewardTokens[rewardTokenAddress], "Unsupported tokens.");
+        require(
+            rewardTokenAddress == tokenAddress || supportedRewardTokens[rewardTokenAddress], "Unsupported reward token."
+        );
         require(position.stakeAmount > 0, "No stake amount to unstake.");
-        require(amount > 0 && amount <= position.stakeAmount, "Invalid amount to unstake.");
+        require(unstakeAmount > 0 && unstakeAmount <= position.stakeAmount, "Invalid amount to unstake.");
 
         address vault = tokenAddressToVaultAddress[tokenAddress];
 
-        // Calculate the number of shares corresponding to the amount to be unstaked
-        // uint256 maxShares = ERC4626(vault).maxRedeem(msg.sender);
-        uint256 sharesToRedeem = ERC4626(vault).convertToShares(amount);
-        // require(sharesToRedeem <= maxShares, "Not enough shares to redeem.");
-        // require(sharesToRedeem > 0, "Not enough shares to redeem.");
+        uint256 totalUserStake = position.stakeAmount;
+        uint256 unstakePercentage = calculateUnstakePercentage(unstakeAmount, totalUserStake);
 
-        // Redeem the assets from the vault
-        uint256 redeemedAmount = ERC4626(vault).redeem(sharesToRedeem, address(this), msg.sender);
+        uint256 sharesToRedeem = calculateSharesToRedeem(vault, unstakePercentage);
 
-        // Apply a 0.3% fee on the redeemed amount
-        (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemedAmount);
+        uint256 redeemableTokens = ERC4626(vault).redeem(sharesToRedeem, address(this), msg.sender);
 
-        // If the reward token is the same as the staked token
-        if (tokenAddress == rewardTokenAddress) {
-            // Transfer the entire amount (after fee) to the user
-            IERC20(tokenAddress).safeTransfer(msg.sender, amountAfterFee);
-        } else {
-            // Split the amount into staked amount and reward amount
-            uint256 stakedAmount = amount; // The amount the user originally staked
-            uint256 rewardAmount = amountAfterFee - stakedAmount; // The rest is reward
+        uint256 stakedPortion = redeemableTokens < unstakeAmount ? redeemableTokens : unstakeAmount;
+        uint256 totalReward = redeemableTokens > stakedPortion ? redeemableTokens - stakedPortion : 0;
 
-            // Step 1: Transfer staked amount to the user
-            IERC20(tokenAddress).safeTransfer(msg.sender, stakedAmount);
+        position.stakeAmount -= stakedPortion;
 
-            // Step 2: Swap the reward amount to the reward token selected by the user
-            address[] memory path;
-            path = new address[](3);
-            path[0] = tokenAddress;
-            path[1] = address(weth);
-            path[2] = rewardTokenAddress;
+        IERC20(tokenAddress).safeTransfer(msg.sender, stakedPortion);
 
-            // Swap the reward amount to the desired reward token
-            uint256 swappedRewardAmount = SwapHelpers.swapIndexToReward(routerV3, path, rewardAmount, msg.sender);
+        uint256 fee = 0;
+        uint256 rewardAfterFee = 0;
 
-            emit RewardTokensSwapped(tokenAddress, rewardTokenAddress, rewardAmount, swappedRewardAmount, msg.sender);
+        if (totalReward > 0) {
+            (fee, rewardAfterFee) = calculateAmountAfterFeeAndFee(totalReward);
+
+            if (fee > 0) {
+                IERC20(tokenAddress).safeTransfer(owner(), fee);
+            }
+
+            if (tokenAddress == rewardTokenAddress) {
+                IERC20(tokenAddress).safeTransfer(msg.sender, rewardAfterFee);
+            } else if (rewardAfterFee > 0) {
+                address[] memory path;
+                path = new address[](3);
+                path[0] = tokenAddress;
+                path[1] = address(weth);
+                path[2] = rewardTokenAddress;
+
+                uint256 swappedRewardAmount = SwapHelpers.swapIndexToReward(routerV3, path, rewardAfterFee, msg.sender);
+
+                emit RewardTokensSwapped(
+                    tokenAddress, rewardTokenAddress, rewardAfterFee, swappedRewardAmount, msg.sender
+                );
+            }
         }
 
-        // Transfer the fee to the contract owner
-        IERC20(tokenAddress).safeTransfer(owner(), fee);
-
-        // Clean up the user's position if they have no remaining shares
         if (ERC4626(vault).balanceOf(msg.sender) == 0) {
             delete positions[msg.sender][tokenAddress];
             numberOfStakersByTokenAddress[tokenAddress] -= 1;
         }
 
-        emit Unstaked(msg.sender, tokenAddress, redeemedAmount, vault, sharesToRedeem, block.timestamp);
+        uint256 poolSize = ERC4626(vault).totalAssets();
+        uint256 totalStaked = position.stakeAmount;
+
+        emit Unstaked(
+            msg.sender,
+            tokenAddress,
+            stakedPortion,
+            totalStaked,
+            rewardAfterFee,
+            poolSize,
+            vault,
+            sharesToRedeem,
+            block.timestamp
+        );
     }
 
-    // function unstake(address tokenAddress, address rewardTokenAddress, uint256 amount) external nonReentrant {
-    //     StakePositions storage position = positions[msg.sender][tokenAddress];
-    //     require(position.owner == msg.sender, "You are not the owner of this position.");
-    //     require(
-    //         supportedTokens[tokenAddress] == true && supportedRewardTokens[rewardTokenAddress] == true,
-    //         "UnSupported Tokens"
-    //     );
-    //     require(position.stakeAmount > 0, "No stake amount to unstake.");
-    //     require(amount > 0 && amount <= position.stakeAmount, "Invalid amount to unstake.");
+    function setFeePercent(uint8 newFeePercent) external onlyOwner {
+        require(newFeePercent <= 100, "Fee percent must be between 0 and 100.");
+        feePercent = newFeePercent;
+    }
 
-    //     address vault = tokenAddressToVaultAddress[tokenAddress];
-    //     uint256 sharesToRedeem = ERC4626(vault).convertToShares(amount);
-    //     uint256 maxRedeemableShares = ERC4626(vault).maxRedeem(msg.sender);
+    function getUserShares(address user, address tokenAddress) public view returns (uint256) {
+        address vault = tokenAddressToVaultAddress[tokenAddress];
+        uint256 shares = ERC4626(vault).balanceOf(user);
+        return shares;
+    }
 
-    //     if (sharesToRedeem > maxRedeemableShares) {
-    //         sharesToRedeem = maxRedeemableShares;
-    //     }
+    function getPureRewardAmount(address tokenAddress, address userAddress, uint256 amount)
+        public
+        view
+        returns (uint256)
+    {
+        StakePositions storage position = positions[userAddress][tokenAddress];
+        uint256 totalUserStake = position.stakeAmount;
 
-    //     // Ensure the user can redeem the requested amount
-    //     // require(sharesToRedeem <= maxRedeemableShares, "Not enough shares to redeem.");
-    //     // require(sharesToRedeem > 0, "No shares to redeem for the requested amount.");
-    //     require(sharesToRedeem > 0, "Not enough shares to redeem.");
+        require(totalUserStake > 0, "No stake amount to unstake.");
+        require(amount > 0 && amount <= totalUserStake, "Invalid amount to unstake.");
 
-    //     position.stakeAmount -= amount;
-    //     // uint256 stakedAmount = position.stakeAmount;
-    //     // position.stakeAmount -= amount;
-    //     // uint256 shares = ERC4626(vault).balanceOf(msg.sender);
-    //     // IERC20(tokenAddress).approve(vault, amount);
-    //     ERC4626(vault).approve(address(this), sharesToRedeem);
-    //     uint256 redeemedAmount = ERC4626(vault).redeem(sharesToRedeem, address(this), msg.sender);
+        address vault = tokenAddressToVaultAddress[tokenAddress];
+        uint256 unstakePercentage = calculateUnstakePercentage(amount, totalUserStake);
+        uint256 sharesToRedeem = calculateSharesToRedeemForUser(vault, userAddress, unstakePercentage);
+        uint256 redeemAmount = ERC4626(vault).previewRedeem(sharesToRedeem);
+        uint256 rewardAmount = redeemAmount > amount ? redeemAmount - amount : 0;
 
-    //     (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(redeemedAmount);
-    //     if (rewardTokenAddress == position.stakeToken) {
-    //         IERC20(tokenAddress).safeTransfer(msg.sender, amountAfterFee);
-    //         // IERC20(tokenAddress).safeTransfer(owner(), fee);
-    //     } else {
-    //         address[] memory path;
-    //         path = new address[](3);
-    //         path[0] = tokenAddress;
-    //         path[1] = address(weth);
-    //         path[2] = rewardTokenAddress;
+        return rewardAmount;
+    }
 
-    //         // uint256 rewardAmount = amountAfterFee - stakedAmount;
-    //         // uint256 originalAmount = amountAfterFee - rewardAmount;
+    function getSharesToRedeemAmount(address tokenAddress, address userAddress, uint256 amount)
+        public
+        view
+        returns (uint256)
+    {
+        StakePositions storage position = positions[userAddress][tokenAddress];
+        uint256 totalUserStake = position.stakeAmount;
 
-    //         // uint256 rewardAmount = redeemedAmount - stakedAmount;
+        require(totalUserStake > 0, "No stake amount to unstake.");
+        require(amount > 0 && amount <= totalUserStake, "Invalid amount to unstake.");
 
-    //         IERC20(tokenAddress).safeTransfer(msg.sender, originalAmount);
-    //         // IERC20(tokenAddress).safeTransfer(owner(), fee);
-
-    //         uint256 swappedAmount = SwapHelpers.swapIndexToReward(routerV3, path, rewardAmount, msg.sender);
-
-    //         emit RewardTokensSwapped(tokenAddress, rewardTokenAddress, amountAfterFee, swappedAmount, msg.sender);
-    //     }
-
-    //     IERC20(tokenAddress).safeTransfer(owner(), fee);
-
-    //     if (ERC4626(vault).balanceOf(msg.sender) == 0) {
-    //         delete positions[msg.sender][tokenAddress];
-    //         numberOfStakersByTokenAddress[tokenAddress] -= 1;
-    //     }
-
-    //     // if (position.stakeAmount == 0) {
-    //     // }
-
-    //     emit Unstaked(msg.sender, tokenAddress, redeemedAmount, vault, sharesToRedeem, block.timestamp);
-    // }
+        address vault = tokenAddressToVaultAddress[tokenAddress];
+        uint256 unstakePercentage = calculateUnstakePercentage(amount, totalUserStake);
+        uint256 sharesToRedeem = calculateSharesToRedeemForUser(vault, userAddress, unstakePercentage);
+        return sharesToRedeem;
+    }
 
     function _initializePools(
         address[] memory _indexTokensAddresses,
@@ -279,9 +296,27 @@ contract NexStaking is ProposableOwnableUpgradeable, ReentrancyGuardUpgradeable 
         (fee, amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(amount, feePercent);
     }
 
-    function getUserShares(address user, address tokenAddress) public view returns (uint256) {
-        address vault = tokenAddressToVaultAddress[tokenAddress];
-        uint256 shares = ERC4626(vault).balanceOf(user);
-        return shares;
+    function calculateUnstakePercentage(uint256 unstakeAmount, uint256 totalUserStake)
+        internal
+        pure
+        returns (uint256)
+    {
+        return (unstakeAmount * 1e18) / totalUserStake;
     }
+
+    function calculateSharesToRedeem(address vault, uint256 unstakePercentage) internal view returns (uint256) {
+        uint256 userShares = ERC4626(vault).balanceOf(msg.sender);
+        return (userShares * unstakePercentage) / 1e18;
+    }
+
+    function calculateSharesToRedeemForUser(address vault, address userAddress, uint256 unstakePercentage)
+        internal
+        view
+        returns (uint256)
+    {
+        uint256 userShares = ERC4626(vault).balanceOf(userAddress);
+        return (userShares * unstakePercentage) / 1e18;
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

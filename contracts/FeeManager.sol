@@ -13,7 +13,6 @@ import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 import {IUniswapV2Router02} from "./interfaces/IUniswapV2Router02.sol";
 import {OracleLibrary} from "./libraries/OracleLibrary.sol";
 import {INonfungiblePositionManager} from "./uniswap/INonfungiblePositionManager.sol";
-import {ProposableOwnableUpgradeable} from "./proposable/ProposableOwnableUpgradeable.sol";
 
 contract FeeManager is OwnableUpgradeable {
     using SafeERC20 for IERC20;
@@ -24,13 +23,13 @@ contract FeeManager is OwnableUpgradeable {
     IUniswapV3Factory public factoryV3;
     IWETH9 public weth;
     IERC20 public usdc;
-    INonfungiblePositionManager nonfungiblePositionManager =
-        INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
+    INonfungiblePositionManager public nonfungiblePositionManager;
 
     uint256 /*private*/ public threshold;
     address[] public rewardTokensAddresses;
     address[] public poolTokensAddresses;
 
+    mapping(address => bool) public supportedToken;
     mapping(address => uint8) public tokenSwapVersion;
 
     event RewardsDistributed(address indexed tokenAddress, uint256 amount, uint256 timestamp);
@@ -39,79 +38,82 @@ contract FeeManager is OwnableUpgradeable {
     event TokensSwapped(address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut);
 
     function initialize(
-        NexStaking _nexStagingAddress,
+        NexStaking _nexStakingAddress,
         address[] memory _indexTokensAddresses,
         address[] memory _rewardTokensAddresses,
         uint8[] memory _swapVersions,
         address _uniswapRouter,
         address _uniswapV2Router,
         address _uniswapV3Factory,
+        address _nonfungiblePositionManager,
         address _weth,
         address _usdc,
         uint256 _threshold
     ) public initializer {
         __Ownable_init(msg.sender);
 
-        nexStaking = NexStaking(_nexStagingAddress);
+        nexStaking = NexStaking(_nexStakingAddress);
         routerV3 = ISwapRouter(_uniswapRouter);
         routerV2 = IUniswapV2Router02(_uniswapV2Router);
+        nonfungiblePositionManager = INonfungiblePositionManager(_nonfungiblePositionManager);
         weth = IWETH9(_weth);
         usdc = IERC20(_usdc);
-        threshold = _threshold * 10 ** 18;
+        // threshold = _threshold * 10 ** 18;
+        threshold = _threshold;
         factoryV3 = IUniswapV3Factory(_uniswapV3Factory);
 
         require(_indexTokensAddresses.length == _swapVersions.length, "Swap versions array length mismatch");
 
         rewardTokensAddresses = _rewardTokensAddresses;
-        // poolTokensAddresses = nexStaking.poolTokensAddresses();
         poolTokensAddresses = _indexTokensAddresses;
+
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            supportedToken[poolTokensAddresses[i]] = true;
+        }
 
         _setSwapVersion(_indexTokensAddresses, _swapVersions);
     }
 
-    /// @dev This function checks and processes rewards distribution based on threshold
     function checkAndTransfer() external {
-        // Swap all reward tokens to WETH (ETH)
+        uint256 balance = address(this).balance;
+        weth.deposit{value: balance}();
+
+        uint256 totalValueOfPoolsInWETH = getTotalValueOfIndexTokensInWETH();
+        require(totalValueOfPoolsInWETH >= threshold, "WETH balance is below the threshold");
+
         _swapRewardTokensToWETH();
 
         uint256 wethBalance = weth.balanceOf(address(this));
-        require(wethBalance >= threshold, "WETH balance is below the threshold");
-
-        // // Split the WETH balance
         uint256 wethForOwner = wethBalance / 2;
         uint256 wethForStaking = wethBalance - wethForOwner;
 
-        // Swap half of WETH to USDC and transfer to the owner
         _swapWETHToUSDCAndTransfer(wethForOwner);
 
-        // Distribute the other half of WETH to the staking pools based on pool weights
         _distributeWETHToPools(wethForStaking);
     }
 
-    function _swapRewardTokensToWETH() public {
+    function _swapRewardTokensToWETH() public /*internal*/ {
         for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
             uint256 tokenBalance = IERC20(rewardTokensAddresses[i]).balanceOf(address(this));
             if (tokenBalance > 0) {
                 uint256 swappedAmount = swapTokens(rewardTokensAddresses[i], address(weth), tokenBalance, address(this));
-                // uint256 swappedAmount =
-                //     SwapHelpers.swapTokens(routerV3, rewardTokensAddresses[i], address(weth), tokenBalance);
+
                 emit TokensSwapped(rewardTokensAddresses[i], address(weth), tokenBalance, swappedAmount);
             }
         }
     }
 
-    /// @dev This function swaps WETH to USDC and transfers to the contract owner
-    function _swapWETHToUSDCAndTransfer(uint256 wethAmount) public {
+    function _swapWETHToUSDCAndTransfer(uint256 wethAmount) public /*internal*/ {
         uint256 swappedAmount = SwapHelpers.swapTokens(routerV3, address(weth), address(usdc), wethAmount);
         usdc.safeTransfer(owner(), swappedAmount);
         emit TransferToOwner(swappedAmount, block.timestamp);
     }
 
-    function _distributeWETHToPools(uint256 wethForStaking) public {
+    function _distributeWETHToPools(uint256 wethForStaking) public /*internal*/ {
         uint256[] memory poolWeights = calculateWeightOfPools();
 
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
-            address vault = nexStaking.tokenAddressToVaultAddress(poolTokensAddresses[i]); // Getting the vault address
+            address vault = nexStaking.tokenAddressToVaultAddress(poolTokensAddresses[i]);
 
             uint256 wethAmountForPool = (wethForStaking * poolWeights[i]) / 1e18;
             if (wethAmountForPool == 0) {
@@ -120,22 +122,19 @@ contract FeeManager is OwnableUpgradeable {
             }
 
             uint256 tokenAmountForPool = swapTokens(address(weth), poolTokensAddresses[i], wethAmountForPool, vault);
-            // uint256 tokenAmountForPool =
-            //     swapTokens(address(weth), poolTokensAddresses[i], wethAmountForPool, address(this));
-            // IERC20(poolTokensAddresses[i]).approve(vault, tokenAmountForPool);
-            // IERC20(poolTokensAddresses[i]).safeTransfer(vault, tokenAmountForPool);
 
             emit RewardsDistributed(poolTokensAddresses[i], tokenAmountForPool, block.timestamp);
         }
     }
 
-    function calculateWeightOfPools() public /*view*/ returns (uint256[] memory) {
+    function calculateWeightOfPools() public view returns (uint256[] memory) {
         uint256 totalValueAcrossAllPools = getPortfolioBalance();
         uint256[] memory weights = new uint256[](poolTokensAddresses.length);
 
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
             address vault = nexStaking.tokenAddressToVaultAddress(poolTokensAddresses[i]);
             uint256 balance = IERC20(poolTokensAddresses[i]).balanceOf(vault);
+
             uint256 poolValue =
                 getAmountOut(poolTokensAddresses[i], address(weth), balance, tokenSwapVersion[poolTokensAddresses[i]]);
 
@@ -149,21 +148,102 @@ contract FeeManager is OwnableUpgradeable {
         return weights;
     }
 
-    function getPortfolioBalance() public /*view*/ returns (uint256 totalValue) {
+    function getPortfolioBalance() public view returns (uint256 totalValue) {
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
             address tokenAddress = poolTokensAddresses[i];
             address vault = nexStaking.tokenAddressToVaultAddress(tokenAddress);
-            if (tokenAddress == address(weth)) {
-                totalValue += IERC20(tokenAddress).balanceOf(vault);
-            } else {
-                uint256 value = getAmountOut(
-                    tokenAddress, address(weth), IERC20(tokenAddress).balanceOf(vault), tokenSwapVersion[tokenAddress]
-                );
+            uint256 balance = IERC20(tokenAddress).balanceOf(vault);
 
-                totalValue += value;
-            }
+            // if (tokenAddress == address(weth)) {
+            //     totalValue += balance;
+            // } else {
+            //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+            //     totalValue += value;
+            // }
+
+            uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+            totalValue += value;
         }
+
         return totalValue;
+    }
+
+    function getTotalValueOfIndexTokensInWETH() public view returns (uint256 totalValue) {
+        for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
+            address tokenAddress = rewardTokensAddresses[i];
+            uint256 balance = IERC20(tokenAddress).balanceOf(address(this));
+
+            // if (tokenAddress == address(weth)) {
+            //     totalValue += balance;
+            // } else {
+            //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+            //     totalValue += value;
+            // }
+
+            // uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+            uint256 value = getAmountOut(tokenAddress, address(weth), balance, 3);
+            totalValue += value;
+        }
+        uint256 ethBalance = address(this).balance;
+        uint256 wethBalance = weth.balanceOf(address(this));
+        totalValue += ethBalance;
+        totalValue += wethBalance;
+
+        return totalValue;
+    }
+
+    // function getTotalValueOfIndexTokensInWETH() public view returns (uint256 totalValue) {
+    //     for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+    //         address tokenAddress = poolTokensAddresses[i];
+    //         uint256 balance = IERC20(tokenAddress).balanceOf(address(this));
+
+    //         // if (tokenAddress == address(weth)) {
+    //         //     totalValue += balance;
+    //         // } else {
+    //         //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+    //         //     totalValue += value;
+    //         // }
+
+    //         uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
+    //         totalValue += value;
+    //     }
+    //     uint256 ethBalance = address(this).balance;
+    //     uint256 wethBalance = weth.balanceOf(address(this));
+    //     totalValue += ethBalance;
+    //     totalValue += wethBalance;
+
+    //     return totalValue;
+    // }
+
+    function predictAPY(address tokenAddress, uint256 etherAmount) external view returns (uint256 apy) {
+        require(supportedToken[tokenAddress], "Unsupported token.");
+
+        address pool = factoryV3.getPool(tokenAddress, address(weth), 3000);
+        require(pool != address(0), "Pool does not exist.");
+
+        address vault = nexStaking.tokenAddressToVaultAddress(tokenAddress);
+
+        uint256 totalTokenInPool = IERC20(tokenAddress).balanceOf(vault);
+
+        uint256 totalValueInEther = getAmountOut(tokenAddress, address(weth), totalTokenInPool, 3);
+
+        if (totalValueInEther > 0) {
+            apy = (etherAmount * 100) / totalValueInEther;
+        } else {
+            apy = 0;
+        }
+
+        return apy;
+    }
+
+    function getAmountOutForRewardAmount(address tokenIn, address tokenOut, uint256 amountIn)
+        public
+        view
+        returns (uint256)
+    {
+        uint256 amount1 = getAmountOut(tokenIn, address(weth), amountIn, 3);
+        uint256 amount2 = getAmountOut(address(weth), tokenOut, amount1, 3);
+        return amount2;
     }
 
     function swapTokens(address tokenIn, address tokenOut, uint256 amountIn, address _recipient)
@@ -188,10 +268,8 @@ contract FeeManager is OwnableUpgradeable {
 
     function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn, uint8 _swapVersion)
         public
-        returns (
-            /*view*/
-            uint256 finalAmountOut
-        )
+        view
+        returns (uint256 finalAmountOut)
     {
         if (amountIn > 0) {
             if (_swapVersion == 3) {
@@ -204,24 +282,23 @@ contract FeeManager is OwnableUpgradeable {
                 finalAmountOut = v2amountOut[1];
             }
         }
+
         return finalAmountOut;
     }
 
-    /// @dev Estimate amount out for Uniswap V3 swaps based on current pool tick
     function estimateAmountOut(address tokenIn, address tokenOut, uint128 amountIn)
         public
-        returns (
-            /*view*/
-            uint256 amountOut
-        )
+        view
+        returns (uint256 amountOut)
     {
         address _pool = factoryV3.getPool(tokenIn, tokenOut, 3000);
-        if (_pool == address(0)) {
-            ensurePoolExists(tokenIn, tokenOut, 3000);
-            _pool = factoryV3.getPool(tokenIn, tokenOut, 3000);
-        }
+        require(_pool != address(0), "Pool does not exist");
+
         int24 tick = OracleLibrary.getLatestTick(_pool);
+
         amountOut = OracleLibrary.getQuoteAtTick(tick, amountIn, tokenIn, tokenOut);
+
+        return amountOut;
     }
 
     function _setSwapVersion(address[] memory _indexTokensAddresses, uint8[] memory _swapVersions) internal {
@@ -229,41 +306,6 @@ contract FeeManager is OwnableUpgradeable {
             tokenSwapVersion[_indexTokensAddresses[i]] = _swapVersions[i];
         }
     }
-
-    // ----------------------------------------------------------------------------------------------
-
-    function ensurePoolExists(address tokenIn, address tokenOut, uint24 fee) public {
-        // Determine token order for pool creation
-        address token0 = tokenIn < tokenOut ? tokenIn : tokenOut;
-        address token1 = tokenIn > tokenOut ? tokenIn : tokenOut;
-
-        // Set the initial price (e.g., assuming a ratio of 1:1)
-        uint160 sqrtPriceX96 = encodePriceSqrt(1000, 1);
-
-        // Create and initialize the pool
-        INonfungiblePositionManager(nonfungiblePositionManager).createAndInitializePoolIfNecessary(
-            token0, token1, fee, sqrtPriceX96
-        );
-    }
-
-    function encodePriceSqrt(uint256 price1, uint256 price0) internal pure returns (uint160) {
-        return uint160(sqrt((price1 * (2 ** 192)) / price0));
-    }
-
-    function sqrt(uint256 x) internal pure returns (uint256 z) {
-        if (x > 3) {
-            z = x;
-            uint256 y = x / 2 + 1;
-            while (y < z) {
-                z = y;
-                y = (x / y + y) / 2;
-            }
-        } else if (x != 0) {
-            z = 1;
-        }
-    }
-
-    // ----------------------------------------------------------------------------------------------
 
     receive() external payable {}
 

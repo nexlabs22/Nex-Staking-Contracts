@@ -36,6 +36,8 @@ contract FeeManager is OwnableUpgradeable {
     event RewardDistributionSkipped(address indexed tokenAddress, string reason);
     event TransferToOwner(uint256 indexed usdcAmount, uint256 timestamp);
     event TokensSwapped(address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut);
+    event RewardTokensUpdated(address[] newRewardTokens);
+    event PoolTokensUpdated(address[] newPoolTokens);
 
     function initialize(
         NexStaking _nexStakingAddress,
@@ -58,7 +60,6 @@ contract FeeManager is OwnableUpgradeable {
         nonfungiblePositionManager = INonfungiblePositionManager(_nonfungiblePositionManager);
         weth = IWETH9(_weth);
         usdc = IERC20(_usdc);
-        // threshold = _threshold * 10 ** 18;
         threshold = _threshold;
         factoryV3 = IUniswapV3Factory(_uniswapV3Factory);
 
@@ -78,7 +79,7 @@ contract FeeManager is OwnableUpgradeable {
         uint256 balance = address(this).balance;
         weth.deposit{value: balance}();
 
-        uint256 totalValueOfPoolsInWETH = getTotalValueOfIndexTokensInWETH();
+        uint256 totalValueOfPoolsInWETH = getTotalValueOfAssetsInWeTH();
         require(totalValueOfPoolsInWETH >= threshold, "WETH balance is below the threshold");
 
         _swapRewardTokensToWETH();
@@ -154,13 +155,6 @@ contract FeeManager is OwnableUpgradeable {
             address vault = nexStaking.tokenAddressToVaultAddress(tokenAddress);
             uint256 balance = IERC20(tokenAddress).balanceOf(vault);
 
-            // if (tokenAddress == address(weth)) {
-            //     totalValue += balance;
-            // } else {
-            //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-            //     totalValue += value;
-            // }
-
             uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
             totalValue += value;
         }
@@ -168,19 +162,11 @@ contract FeeManager is OwnableUpgradeable {
         return totalValue;
     }
 
-    function getTotalValueOfIndexTokensInWETH() public view returns (uint256 totalValue) {
+    function getTotalValueOfAssetsInWeTH() public view returns (uint256 totalValue) {
         for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
             address tokenAddress = rewardTokensAddresses[i];
             uint256 balance = IERC20(tokenAddress).balanceOf(address(this));
 
-            // if (tokenAddress == address(weth)) {
-            //     totalValue += balance;
-            // } else {
-            //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-            //     totalValue += value;
-            // }
-
-            // uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
             uint256 value = getAmountOut(tokenAddress, address(weth), balance, 3);
             totalValue += value;
         }
@@ -191,29 +177,6 @@ contract FeeManager is OwnableUpgradeable {
 
         return totalValue;
     }
-
-    // function getTotalValueOfIndexTokensInWETH() public view returns (uint256 totalValue) {
-    //     for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
-    //         address tokenAddress = poolTokensAddresses[i];
-    //         uint256 balance = IERC20(tokenAddress).balanceOf(address(this));
-
-    //         // if (tokenAddress == address(weth)) {
-    //         //     totalValue += balance;
-    //         // } else {
-    //         //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-    //         //     totalValue += value;
-    //         // }
-
-    //         uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-    //         totalValue += value;
-    //     }
-    //     uint256 ethBalance = address(this).balance;
-    //     uint256 wethBalance = weth.balanceOf(address(this));
-    //     totalValue += ethBalance;
-    //     totalValue += wethBalance;
-
-    //     return totalValue;
-    // }
 
     function predictAPY(address tokenAddress, uint256 etherAmount) external view returns (uint256 apy) {
         require(supportedToken[tokenAddress], "Unsupported token.");
@@ -234,6 +197,54 @@ contract FeeManager is OwnableUpgradeable {
         }
 
         return apy;
+    }
+
+    function setNexStaking(NexStaking _nexStakingAddress) external onlyOwner {
+        nexStaking = _nexStakingAddress;
+    }
+
+    function setRouterV3(ISwapRouter _routerV3) external onlyOwner {
+        routerV3 = _routerV3;
+    }
+
+    function setRouterV2(IUniswapV2Router02 _routerV2) external onlyOwner {
+        routerV2 = _routerV2;
+    }
+
+    function setFactoryV3(IUniswapV3Factory _factoryV3) external onlyOwner {
+        factoryV3 = _factoryV3;
+    }
+
+    function setUsdc(IERC20 _usdc) external onlyOwner {
+        usdc = _usdc;
+    }
+
+    function setNonfungiblePositionManager(INonfungiblePositionManager _nonfungiblePositionManager)
+        external
+        onlyOwner
+    {
+        nonfungiblePositionManager = _nonfungiblePositionManager;
+    }
+
+    function setThreshold(uint256 _threshold) external onlyOwner {
+        threshold = _threshold;
+    }
+
+    function setRewardTokensAddresses(address[] memory _newRewardTokensAddresses) external onlyOwner {
+        require(_newRewardTokensAddresses.length > 0, "New reward tokens array cannot be empty");
+        rewardTokensAddresses = _newRewardTokensAddresses;
+
+        emit RewardTokensUpdated(_newRewardTokensAddresses);
+    }
+
+    function setPoolTokensAddresses(address[] memory _newPoolTokensAddresses) external onlyOwner {
+        require(_newPoolTokensAddresses.length > 0, "New pool tokens array cannot be empty");
+        poolTokensAddresses = _newPoolTokensAddresses;
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            supportedToken[poolTokensAddresses[i]] = true;
+        }
+
+        emit PoolTokensUpdated(_newPoolTokensAddresses);
     }
 
     function getAmountOutForRewardAmount(address tokenIn, address tokenOut, uint256 amountIn)

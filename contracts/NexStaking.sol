@@ -70,10 +70,9 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut, address user
     );
 
-    // /// @custom:oz-upgrades-unsafe-allow constructor
-    // constructor() {
-    //     _disableInitializers();
-    // }
+    event RewardTokensUpdated(address[] newRewardTokens);
+
+    event PoolTokensUpdated(address[] newPoolTokens);
 
     function initialize(
         address[] memory _indexTokensAddresses,
@@ -266,6 +265,30 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         uint256 unstakePercentage = calculateUnstakePercentage(amount, totalUserStake);
         uint256 sharesToRedeem = calculateSharesToRedeemForUser(vault, userAddress, unstakePercentage);
         return sharesToRedeem;
+    }
+
+    function setRewardTokensAddresses(address[] memory _newRewardTokensAddresses) external onlyOwner {
+        require(_newRewardTokensAddresses.length > 0, "New reward tokens array cannot be empty");
+        rewardTokensAddresses = _newRewardTokensAddresses;
+        for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
+            supportedRewardTokens[rewardTokensAddresses[i]] = true;
+        }
+
+        emit RewardTokensUpdated(_newRewardTokensAddresses);
+    }
+
+    function setPoolTokensAddresses(address[] memory _newPoolTokensAddresses) external onlyOwner {
+        require(_newPoolTokensAddresses.length > 0, "New pool tokens array cannot be empty");
+        poolTokensAddresses = _newPoolTokensAddresses;
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            supportedTokens[poolTokensAddresses[i]] = true;
+        }
+
+        emit PoolTokensUpdated(_newPoolTokensAddresses);
+    }
+
+    function setRouterV3(ISwapRouter _routerV3) external onlyOwner {
+        routerV3 = _routerV3;
     }
 
     function _initializePools(

@@ -8,7 +8,6 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {ReentrancyGuardUpgradeable} from
     "@openzeppelin/contracts-upgradeable/contracts/utils/ReentrancyGuardUpgradeable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 
 import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
@@ -16,13 +15,12 @@ import {CalculationHelpers} from "./libraries/CalculationHelpers.sol";
 import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 
-contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
+contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     ERC4626Factory public erc4626Factory;
     ISwapRouter public routerV3;
     IWETH9 public weth;
-    // IERC20 public nexLabsToken;
 
     address[] public poolTokensAddresses;
     address[] public rewardTokensAddresses;
@@ -39,7 +37,7 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
     mapping(address => uint8) public tokenSwapVersion;
     mapping(address => bool) public supportedTokens;
     mapping(address => bool) public supportedRewardTokens;
-    mapping(address => address) public tokenAddressToVaultAddress;
+    // mapping(address => address) public tokenAddressToVaultAddress;
     mapping(address => uint256) public numberOfStakersByTokenAddress;
     mapping(address => mapping(address => StakePositions)) public positions;
 
@@ -84,17 +82,14 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         uint8 _feePercent
     ) public initializer {
         __Ownable_init(msg.sender);
-        __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
 
-        // require(_nexLabsTokenAddress != address(0), "Invalid address for _nexLabsAddress");
         require(_erc4626Factory != address(0), "Invalid address for _erc4626Factory");
         require(_weth != address(0), "Invalid address for _weth");
 
         erc4626Factory = ERC4626Factory(_erc4626Factory);
         routerV3 = ISwapRouter(_uniswapV3Router);
         weth = IWETH9(_weth);
-        // nexLabsToken = IERC20(_nexLabsTokenAddress);
         feePercent = _feePercent;
 
         require(
@@ -114,7 +109,7 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         (uint256 fee, uint256 amountAfterFee) = calculateAmountAfterFeeAndFee(amount);
         IERC20(tokenAddress).safeTransferFrom(msg.sender, owner(), fee);
 
-        address vault = tokenAddressToVaultAddress[tokenAddress];
+        address vault = erc4626Factory.tokenAddressToVaultAddress(tokenAddress);
 
         IERC20(tokenAddress).approve(vault, amountAfterFee);
         IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), amountAfterFee);
@@ -155,7 +150,7 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         require(position.stakeAmount > 0, "No stake amount to unstake.");
         require(unstakeAmount > 0 && unstakeAmount <= position.stakeAmount, "Invalid amount to unstake.");
 
-        address vault = tokenAddressToVaultAddress[tokenAddress];
+        address vault = erc4626Factory.tokenAddressToVaultAddress(tokenAddress);
 
         uint256 totalUserStake = position.stakeAmount;
         uint256 unstakePercentage = calculateUnstakePercentage(unstakeAmount, totalUserStake);
@@ -219,13 +214,17 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         );
     }
 
+    function _setERC4626Factory(ERC4626Factory _erc4626Factory) external onlyOwner {
+        erc4626Factory = _erc4626Factory;
+    }
+
     function setFeePercent(uint8 newFeePercent) external onlyOwner {
         require(newFeePercent <= 100, "Fee percent must be between 0 and 100.");
         feePercent = newFeePercent;
     }
 
     function getUserShares(address user, address tokenAddress) public view returns (uint256) {
-        address vault = tokenAddressToVaultAddress[tokenAddress];
+        address vault = erc4626Factory.tokenAddressToVaultAddress(tokenAddress);
         uint256 shares = ERC4626(vault).balanceOf(user);
         return shares;
     }
@@ -241,7 +240,7 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         require(totalUserStake > 0, "No stake amount to unstake.");
         require(amount > 0 && amount <= totalUserStake, "Invalid amount to unstake.");
 
-        address vault = tokenAddressToVaultAddress[tokenAddress];
+        address vault = erc4626Factory.tokenAddressToVaultAddress(tokenAddress);
         uint256 unstakePercentage = calculateUnstakePercentage(amount, totalUserStake);
         uint256 sharesToRedeem = calculateSharesToRedeemForUser(vault, userAddress, unstakePercentage);
         uint256 redeemAmount = ERC4626(vault).previewRedeem(sharesToRedeem);
@@ -261,7 +260,7 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         require(totalUserStake > 0, "No stake amount to unstake.");
         require(amount > 0 && amount <= totalUserStake, "Invalid amount to unstake.");
 
-        address vault = tokenAddressToVaultAddress[tokenAddress];
+        address vault = erc4626Factory.tokenAddressToVaultAddress(tokenAddress);
         uint256 unstakePercentage = calculateUnstakePercentage(amount, totalUserStake);
         uint256 sharesToRedeem = calculateSharesToRedeemForUser(vault, userAddress, unstakePercentage);
         return sharesToRedeem;
@@ -297,9 +296,6 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         uint8[] memory _swapVersions
     ) internal {
         for (uint256 i = 0; i < _indexTokensAddresses.length; i++) {
-            address vault = erc4626Factory.createERC4626Vault(_indexTokensAddresses[i]);
-            require(vault != address(0), "Invalid vault address");
-            tokenAddressToVaultAddress[_indexTokensAddresses[i]] = vault;
             supportedTokens[_indexTokensAddresses[i]] = true;
             tokenSwapVersion[_indexTokensAddresses[i]] = _swapVersions[i];
         }
@@ -340,6 +336,4 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
         uint256 userShares = ERC4626(vault).balanceOf(userAddress);
         return (userShares * unstakePercentage) / 1e18;
     }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

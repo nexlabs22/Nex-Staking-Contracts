@@ -2,10 +2,12 @@
 pragma solidity ^0.8.26;
 
 import {Test, console} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {NexStaking} from "../../../contracts/NexStaking.sol";
@@ -76,28 +78,25 @@ contract NexStakingTest is Test {
         address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut, address user
     );
 
+    event RewardTokensUpdated(address[] newRewardTokens);
+
+    event PoolTokensUpdated(address[] newPoolTokens);
+
     string MAINNET_RPC_URL = vm.envString("MAINNET_RPC_URL");
 
     function setUp() public {
-        // Fork the Ethereum mainnet
         mainnetFork = vm.createFork(MAINNET_RPC_URL);
         vm.selectFork(mainnetFork);
 
         deal(address(this), 10000 ether);
 
-        // Initialize swapRouter, WETH, and Uniswap
-        swapRouterV3 = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564); // Uniswap V3 Router
-        weth = IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2); // WETH Address
-        // uniswapV3Factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
-        // nonfungiblePositionManager = INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88); // Position Manager
+        swapRouterV3 = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+        weth = IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
-        // Deploy mock tokens
         deployTokens();
 
-        // Deploy and initialize contracts
         deployAndInitializeContracts();
 
-        // Add liquidity to Uniswap pools
         addLiquidityToAllPools();
 
         console.log("Setup complete.");
@@ -112,9 +111,8 @@ contract NexStakingTest is Test {
 
         (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(500e18, 3);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
 
-        // User stakes 500 tokens
         indexTokens[0].approve(address(nexStaking), 500e18);
         vm.expectEmit(true, true, true, true);
         emit Staked(
@@ -144,9 +142,8 @@ contract NexStakingTest is Test {
 
         (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(500e18, 3);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
 
-        // User stakes 500 tokens
         indexTokens[0].approve(address(nexStaking), 500e18);
         vm.expectEmit(true, true, true, true);
         emit Staked(
@@ -185,13 +182,12 @@ contract NexStakingTest is Test {
     }
 
     function testUnstakeAllTokensWithSameTokenReward() public {
-        // indexTokens[0].transferFrom(user, vault, 1000e18);
         vm.startPrank(user);
         deal(address(indexTokens[0]), user, 1000e18);
 
         deal(address(indexTokens[0]), user, 500e18);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         (, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(500e18, 3);
 
         indexTokens[0].approve(address(nexStaking), 500e18);
@@ -211,8 +207,6 @@ contract NexStakingTest is Test {
         console.log("Share to redeem", sharesToRedeem);
         console.log("Reward Amount", rewardAmount);
 
-        // (, uint256 rewardamountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(rewardAmount, 3);
-
         nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee);
 
         uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
@@ -231,19 +225,15 @@ contract NexStakingTest is Test {
     function testUnstakeSomeTokensWithSameTokenReward() public {
         vm.startPrank(user);
 
-        // deal(address(indexTokens[0]), address(this), 1000e18);
-
         deal(address(indexTokens[0]), user, 500e18);
-        // User stakes 500 tokens
+
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
         uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
-
-        // indexTokens[0].transfer(vault, 1000e18);
 
         console.log("Vault total assets: ", ERC4626(vault).totalAssets());
 
@@ -286,17 +276,12 @@ contract NexStakingTest is Test {
 
         uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-        // Approve NexStaking for redeeming shares from the vault
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
         console.log("Vault total assets: ", ERC4626(vault).totalAssets());
 
         deal(address(indexTokens[0]), vault, 1000e18);
-
-        // deal(address(indexTokens[0]), vault, 1000e18);
-        // indexTokens[0].approve(vault, 1000e18);
-        // ERC4626(vault).deposit(1000e18, address(this));
 
         console.log("Vault balance: ", ERC4626(vault).balanceOf(user));
 
@@ -308,7 +293,6 @@ contract NexStakingTest is Test {
         console.log("User reward token balance before unstake: ", userRewardTokenBalanceBeforeUnstake);
         console.log("Staking contract balance before unstake: ", stakingContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee);
 
         uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user);
@@ -343,7 +327,7 @@ contract NexStakingTest is Test {
 
         uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
         console.log("Vault total assets: ", ERC4626(vault).totalAssets());
@@ -394,7 +378,7 @@ contract NexStakingTest is Test {
 
         uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
         console.log("Vault total assets: ", ERC4626(vault).totalAssets());
@@ -409,7 +393,7 @@ contract NexStakingTest is Test {
 
         uint256 user2BalanceBeforeUnStake = indexTokens[0].balanceOf(user2);
 
-        address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault2 = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault2).approve(address(nexStaking), type(uint256).max);
         vm.stopPrank();
 
@@ -426,7 +410,6 @@ contract NexStakingTest is Test {
         console.log("User reward token balance before unstake: ", userRewardTokenBalanceBeforeUnstake);
         console.log("Staking contract balance before unstake: ", stakingContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee);
 
         uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user);
@@ -455,7 +438,6 @@ contract NexStakingTest is Test {
         console.log("User reward token balance before unstake: ", user2RewardTokenBalanceBeforeUnstake);
         console.log("Staking contract balance before unstake: ", staking2ContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee2);
 
         uint256 user2RewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user2);
@@ -476,13 +458,13 @@ contract NexStakingTest is Test {
     function testUnstakeSomeTokensWithTwoUsersWithDifferentTokenReward() public {
         vm.startPrank(user);
         deal(address(indexTokens[0]), user, 500e18);
-        // User stakes 500 tokens
+
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
         uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
         console.log("Vault total assets: ", ERC4626(vault).totalAssets());
@@ -491,13 +473,13 @@ contract NexStakingTest is Test {
 
         vm.startPrank(user2);
         deal(address(indexTokens[0]), user2, 200e18);
-        // User stakes 500 tokens
+
         indexTokens[0].approve(address(nexStaking), 200e18);
         nexStaking.stake(address(indexTokens[0]), 200e18);
 
         uint256 user2BalanceBeforeUnStake = indexTokens[0].balanceOf(user2);
 
-        address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault2 = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault2).approve(address(nexStaking), type(uint256).max);
         vm.stopPrank();
 
@@ -514,7 +496,6 @@ contract NexStakingTest is Test {
         console.log("User reward token balance before unstake: ", userRewardTokenBalanceBeforeUnstake);
         console.log("Staking contract balance before unstake: ", stakingContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee);
 
         uint256 userRewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user);
@@ -545,7 +526,6 @@ contract NexStakingTest is Test {
         console.log("User reward token balance before unstake: ", user2RewardTokenBalanceBeforeUnstake);
         console.log("Staking contract balance before unstake: ", staking2ContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(rewardTokens[1]), amountAfterFee2);
 
         uint256 user2RewardTokenBalanceAfterUnstake = rewardTokens[1].balanceOf(user2);
@@ -568,13 +548,13 @@ contract NexStakingTest is Test {
     function testUnstakeAllTokensWithTwoUsersWitSameTokenReward() public {
         vm.startPrank(user);
         deal(address(indexTokens[0]), user, 500e18);
-        // User stakes 500 tokens
+
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
         uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
         console.log("Vault total assets: ", ERC4626(vault).totalAssets());
@@ -583,13 +563,13 @@ contract NexStakingTest is Test {
 
         vm.startPrank(user2);
         deal(address(indexTokens[0]), user2, 200e18);
-        // User stakes 500 tokens
+
         indexTokens[0].approve(address(nexStaking), 200e18);
         nexStaking.stake(address(indexTokens[0]), 200e18);
 
         uint256 user2BalanceBeforeUnStake = indexTokens[0].balanceOf(user2);
 
-        address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault2 = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault2).approve(address(nexStaking), type(uint256).max);
         vm.stopPrank();
 
@@ -604,7 +584,6 @@ contract NexStakingTest is Test {
 
         console.log("Staking contract balance before unstake: ", stakingContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee);
 
         uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
@@ -628,7 +607,6 @@ contract NexStakingTest is Test {
 
         console.log("Staking contract balance before unstake: ", staking2ContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee2);
 
         uint256 user2BalanceAfterUnStake = indexTokens[0].balanceOf(user2);
@@ -646,13 +624,13 @@ contract NexStakingTest is Test {
     function testUnstakeSomeTokensWithTwoUsersWitSameTokenReward() public {
         vm.startPrank(user);
         deal(address(indexTokens[0]), user, 500e18);
-        // User stakes 500 tokens
+
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
         uint256 userBalanceBeforeUnStake = indexTokens[0].balanceOf(user);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
 
         console.log("Vault total assets: ", ERC4626(vault).totalAssets());
@@ -661,13 +639,13 @@ contract NexStakingTest is Test {
 
         vm.startPrank(user2);
         deal(address(indexTokens[0]), user2, 200e18);
-        // User stakes 500 tokens
+
         indexTokens[0].approve(address(nexStaking), 200e18);
         nexStaking.stake(address(indexTokens[0]), 200e18);
 
         uint256 user2BalanceBeforeUnStake = indexTokens[0].balanceOf(user2);
 
-        address vault2 = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault2 = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault2).approve(address(nexStaking), type(uint256).max);
         vm.stopPrank();
 
@@ -682,7 +660,6 @@ contract NexStakingTest is Test {
 
         console.log("Staking contract balance before unstake: ", stakingContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee);
 
         uint256 userBalanceAfterUnStake = indexTokens[0].balanceOf(user);
@@ -708,7 +685,6 @@ contract NexStakingTest is Test {
 
         console.log("Staking contract balance before unstake: ", staking2ContractBalance);
 
-        // Unstake all tokens and receive rewards
         nexStaking.unstake(address(indexTokens[0]), address(indexTokens[0]), amountAfterFee2);
 
         uint256 user2BalanceAfterUnStake = indexTokens[0].balanceOf(user2);
@@ -732,24 +708,19 @@ contract NexStakingTest is Test {
 
         deal(address(indexTokens[0]), user, 500e18);
 
-        // Approve the router to spend the user's index tokens
         indexTokens[0].approve(address(swapRouterV3), 500e18);
 
-        // Define the swap path (indexToken1 -> WETH -> rewardToken1)
         address[] memory path = new address[](3);
-        path[0] = address(indexTokens[0]); // Swap from indexToken1
-        path[1] = address(weth); // Intermediary WETH
-        path[2] = address(rewardTokens[1]); // Swap to rewardToken1
+        path[0] = address(indexTokens[0]);
+        path[1] = address(weth);
+        path[2] = address(rewardTokens[1]);
 
-        // Check initial balances
         uint256 initialRewardBalance = rewardTokens[1].balanceOf(user);
         uint256 initialIndexBalance = indexTokens[0].balanceOf(user);
 
-        // Perform the swap
-        uint256 amountIn = 500e18; // Amount to swap
+        uint256 amountIn = 500e18;
         uint256 amountOut = SwapHelpers.swapIndexToReward(swapRouterV3, path, amountIn, user);
 
-        // Verify that the rewardToken1 balance has increased and indexToken1 balance has decreased
         uint256 finalRewardBalance = rewardTokens[1].balanceOf(user);
         uint256 finalIndexBalance = indexTokens[0].balanceOf(user);
 
@@ -764,7 +735,7 @@ contract NexStakingTest is Test {
         console.log("-----------------testSwapIndexToReward-----------------");
     }
 
-    function testCalculateAmountAfterFee() public {
+    function testCalculateAmountAfterFee() public pure {
         (uint256 fee, uint256 amountAfterFee) = CalculationHelpers.calculateAmountAfterFeeAndFee(1e18, 1);
         uint256 expectedFee = (1e18 * 1) / 10000;
         uint256 expectedAmount = 1e18 - expectedFee;
@@ -778,12 +749,14 @@ contract NexStakingTest is Test {
 
         assertEq(nexStaking.feePercent(), initialFeePercent);
 
+        vm.startPrank(owner);
         nexStaking.setFeePercent(newFeePercent);
+        vm.stopPrank();
 
         assertEq(nexStaking.feePercent(), newFeePercent);
     }
 
-    function testInitializeStaking() public {
+    function testInitializeStaking() public view {
         assertEq(nexStaking.poolTokensAddresses(0), address(indexTokens[0]), "Index Token 1 is incorrect");
         assertEq(nexStaking.poolTokensAddresses(1), address(indexTokens[1]), "Index Token 2 is incorrect");
 
@@ -811,7 +784,7 @@ contract NexStakingTest is Test {
         indexTokens[0].approve(address(nexStaking), 1000e18);
         nexStaking.stake(address(indexTokens[0]), 1000e18);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         deal(address(indexTokens[0]), vault, 1000e18);
 
         uint256 amountToUnstake = 750e18;
@@ -845,7 +818,7 @@ contract NexStakingTest is Test {
         indexTokens[0].approve(address(nexStaking), 500e18);
         nexStaking.stake(address(indexTokens[0]), 500e18);
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         deal(address(indexTokens[0]), vault, 1000e18);
 
         uint256 amountToUnstake = 250e18;
@@ -879,7 +852,7 @@ contract NexStakingTest is Test {
 
         assertEq(stakeAmountAfterStake, amountAfterStakeFee, "Stake amount should match amount after fee");
 
-        address vault = nexStaking.tokenAddressToVaultAddress(address(indexTokens[0]));
+        address vault = erc4626Factory.tokenAddressToVaultAddress(address(indexTokens[0]));
         ERC4626(vault).approve(address(nexStaking), type(uint256).max);
         deal(address(indexTokens[0]), vault, 1000e18);
 
@@ -914,6 +887,98 @@ contract NexStakingTest is Test {
         vm.stopPrank();
     }
 
+    function testSetRewardTokensAddresses() public {
+        console.log("------------ testSetRewardTokensAddresses ------------");
+
+        MockERC20 newRewardToken1 = new MockERC20("New Reward Token 1", "NRT1");
+        MockERC20 newRewardToken2 = new MockERC20("New Reward Token 2", "NRT2");
+
+        address[] memory newRewardTokens = new address[](2);
+        newRewardTokens[0] = address(newRewardToken1);
+        newRewardTokens[1] = address(newRewardToken2);
+
+        vm.startPrank(owner);
+
+        vm.recordLogs();
+
+        nexStaking.setRewardTokensAddresses(newRewardTokens);
+
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+
+        bool foundEvent = false;
+        bytes32 eventSignature = keccak256("RewardTokensUpdated(address[])");
+        for (uint256 i = 0; i < entries.length; i++) {
+            Vm.Log memory logEntry = entries[i];
+            if (logEntry.topics[0] == eventSignature) {
+                foundEvent = true;
+                break;
+            }
+        }
+        assertTrue(foundEvent, "RewardTokensUpdated event was not emitted");
+
+        assertEq(nexStaking.rewardTokensAddresses(0), newRewardTokens[0], "Reward token address at index 0 mismatch");
+        assertEq(nexStaking.rewardTokensAddresses(1), newRewardTokens[1], "Reward token address at index 1 mismatch");
+
+        bool isSupported0 = nexStaking.supportedRewardTokens(newRewardTokens[0]);
+        assertTrue(isSupported0, "Reward token 0 should be supported");
+        bool isSupported1 = nexStaking.supportedRewardTokens(newRewardTokens[1]);
+        assertTrue(isSupported1, "Reward token 1 should be supported");
+
+        vm.stopPrank();
+
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, user));
+        nexStaking.setRewardTokensAddresses(newRewardTokens);
+
+        console.log("------------ testSetRewardTokensAddresses ------------");
+    }
+
+    function testSetPoolTokensAddresses() public {
+        console.log("------------ testSetPoolTokensAddresses ------------");
+
+        MockERC20 newPoolToken1 = new MockERC20("New Pool Token 1", "NPT1");
+        MockERC20 newPoolToken2 = new MockERC20("New Pool Token 2", "NPT2");
+
+        address[] memory newPoolTokens = new address[](2);
+        newPoolTokens[0] = address(newPoolToken1);
+        newPoolTokens[1] = address(newPoolToken2);
+
+        vm.startPrank(owner);
+
+        vm.recordLogs();
+
+        nexStaking.setPoolTokensAddresses(newPoolTokens);
+
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+
+        bool foundEvent = false;
+        bytes32 eventSignature = keccak256("PoolTokensUpdated(address[])");
+        for (uint256 i = 0; i < entries.length; i++) {
+            Vm.Log memory logEntry = entries[i];
+            if (logEntry.topics[0] == eventSignature) {
+                foundEvent = true;
+                break;
+            }
+        }
+        assertTrue(foundEvent, "PoolTokensUpdated event was not emitted");
+
+        assertEq(nexStaking.poolTokensAddresses(0), newPoolTokens[0], "Pool token address at index 0 mismatch");
+        assertEq(nexStaking.poolTokensAddresses(1), newPoolTokens[1], "Pool token address at index 1 mismatch");
+
+        bool isSupported0 = nexStaking.supportedTokens(newPoolTokens[0]);
+        assertTrue(isSupported0, "Pool token 0 should be supported");
+        bool isSupported1 = nexStaking.supportedTokens(newPoolTokens[1]);
+        assertTrue(isSupported1, "Pool token 1 should be supported");
+
+        vm.stopPrank();
+
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, user));
+        nexStaking.setPoolTokensAddresses(newPoolTokens);
+
+        console.log("------------ testSetPoolTokensAddresses ------------");
+    }
+
     function deployTokens() internal {
         nexLabsToken = new MockERC20("NexLabs Token", "NEX");
         // usdc = new MockERC20("USD Coin", "USDC", 6);
@@ -922,7 +987,6 @@ contract NexStakingTest is Test {
         // deal(address(usdc), address(this), 1e24);
 
         for (uint256 i = 0; i < 3; i++) {
-            // Deploy index tokens
             MockERC20 indexToken = new MockERC20(
                 string(abi.encodePacked("Index Token ", uint8(i + 1))), string(abi.encodePacked("IDX", uint8(i + 1)))
             );
@@ -932,7 +996,6 @@ contract NexStakingTest is Test {
             indexToken.mint(address(this), 100000e24);
             indexToken.mint(msg.sender, 100000e24);
             indexToken.mint(msg.sender, 100000e24);
-            // indexToken.mint(user, 100000e24);
 
             rewardTokens.push(indexToken);
 
@@ -942,47 +1005,65 @@ contract NexStakingTest is Test {
             rewardTokens.push(rewardToken);
 
             rewardToken.mint(address(this), 1e24);
-            // rewardToken.mint(user, 1e24);
             rewardToken.mint(address(this), 100000e24);
             rewardToken.mint(address(this), 100000e24);
             rewardToken.mint(msg.sender, 100000e24);
             rewardToken.mint(msg.sender, 100000e24);
-            // rewardToken.mint(user, 100000e24);
 
             console.log("Index Token ", i, " deployed at: ", address(indexToken));
-            // console.log("Reward Token ", i, " deployed at: ", address(rewardToken));
         }
     }
 
-    function deployAndInitializeContracts() internal {
-        // Deploy NexStaking contract
-        nexStaking = new NexStaking();
-        console.log("Deploying NexStaking");
+    function testSetERC4626Factory() public {
+        console.log("------------ testSetERC4626Factory ------------");
 
-        // Deploy ERC4626 Factory
+        ERC4626Factory newFactory = new ERC4626Factory();
+
+        vm.startPrank(owner);
+
+        nexStaking._setERC4626Factory(newFactory);
+
+        assertEq(address(nexStaking.erc4626Factory()), address(newFactory), "ERC4626Factory address mismatch");
+
+        vm.stopPrank();
+
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, user));
+        nexStaking._setERC4626Factory(newFactory);
+        vm.stopPrank();
+
+        console.log("------------ testSetERC4626Factory ------------");
+    }
+
+    function deployAndInitializeContracts() internal {
         erc4626Factory = new ERC4626Factory();
         console.log("ERC4626Factory deployed");
+
+        erc4626Factory.initialize(addressArray(indexTokens));
+        console.log("ERC4626Factory initialized with index tokens");
+
+        nexStaking = new NexStaking();
+        console.log("Deploying NexStaking");
 
         uint8[] memory swapVersions = new uint8[](indexTokens.length);
         for (uint256 i = 0; i < swapVersions.length; i++) {
             swapVersions[i] = 3;
         }
 
-        // Initialize NexStaking
+        vm.startPrank(owner);
         nexStaking.initialize(
-            // address(nexLabsToken), // NexLabs token address
-            addressArray(indexTokens), // Supported staking tokens
-            addressArray(rewardTokens), // Supported reward tokens
-            swapVersions, // Versions of the swap mechanism (e.g., Uniswap V3)
-            address(erc4626Factory), // ERC4626 Factory address
-            uniswapV3Router, // Uniswap V3 Router
-            address(weth), // WETH address
-            3 // Fee percentage
+            addressArray(indexTokens),
+            addressArray(rewardTokens),
+            swapVersions,
+            address(erc4626Factory),
+            uniswapV3Router,
+            address(weth),
+            3
         );
+        vm.stopPrank();
 
         console.log("Nex Staking deployed at: ", address(nexStaking));
 
-        // Initialize FeeManager
         feeManager = new FeeManager();
         feeManager.initialize(
             nexStaking,
@@ -995,7 +1076,8 @@ contract NexStakingTest is Test {
             nonfungiblePositionManagerAddress,
             address(weth),
             address(rewardToken1),
-            1 // Threshold
+            1, // Threshold
+            address(erc4626Factory)
         );
 
         console.log("FeeManager initialized.");
@@ -1021,7 +1103,6 @@ contract NexStakingTest is Test {
         require(wethBalance >= 5e18, "Not enough WETH for liquidity");
         require(indexTokenBalance >= 1000e18, "Not enough index tokens for liquidity");
 
-        // Determine token0 and token1
         address token0 = address(weth) < address(indexToken) ? address(weth) : address(indexToken);
         address token1 = address(weth) > address(indexToken) ? address(weth) : address(indexToken);
 
@@ -1043,16 +1124,15 @@ contract NexStakingTest is Test {
         weth.approve(address(nonfungiblePositionManager), type(uint256).max);
         indexToken.approve(address(nonfungiblePositionManager), type(uint256).max);
 
-        // Set amount0Desired and amount1Desired based on whether the first token is WETH
         uint256 amount0Desired;
         uint256 amount1Desired;
 
         if (token0 == address(weth)) {
-            amount0Desired = 5e18; // WETH as the first token
-            amount1Desired = 1000e18; // The other token
+            amount0Desired = 5e18;
+            amount1Desired = 1000e18;
         } else {
-            amount0Desired = 1000e18; // The other token
-            amount1Desired = 5e18; // WETH
+            amount0Desired = 1000e18;
+            amount1Desired = 5e18;
         }
 
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
@@ -1077,10 +1157,6 @@ contract NexStakingTest is Test {
         IWETH9 wethContract = IWETH9(address(weth));
         wethContract.deposit{value: 10 ether}();
     }
-
-    // function wrapEthToWeth() internal {
-    //     weth.deposit{value: 10 ether}();
-    // }
 
     function encodePriceSqrt(uint256 reserve1, uint256 reserve0) public pure returns (uint160) {
         return uint160(sqrt((reserve1 * (2 ** 192)) / reserve0));

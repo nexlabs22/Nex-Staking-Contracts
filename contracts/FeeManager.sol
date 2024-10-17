@@ -48,7 +48,7 @@ contract FeeManager is Initializable, OwnableUpgradeable {
         address[] memory _rewardTokensAddresses,
         uint8[] memory _swapVersions,
         address _uniswapRouter,
-        address _uniswapV2Router,
+        // address _uniswapV2Router,
         address _uniswapV3Factory,
         address _nonfungiblePositionManager,
         address _weth,
@@ -61,7 +61,7 @@ contract FeeManager is Initializable, OwnableUpgradeable {
         nexStaking = NexStaking(_nexStakingAddress);
         erc4626Factory = ERC4626Factory(_erc4626Factory); // Initialize erc4626Factory
         routerV3 = ISwapRouter(_uniswapRouter);
-        routerV2 = IUniswapV2Router02(_uniswapV2Router);
+        // routerV2 = IUniswapV2Router02(_uniswapV2Router);
         nonfungiblePositionManager = INonfungiblePositionManager(_nonfungiblePositionManager);
         weth = IWETH9(_weth);
         usdc = IERC20(_usdc);
@@ -216,9 +216,9 @@ contract FeeManager is Initializable, OwnableUpgradeable {
         routerV3 = _routerV3;
     }
 
-    function setRouterV2(IUniswapV2Router02 _routerV2) external onlyOwner {
-        routerV2 = _routerV2;
-    }
+    // function setRouterV2(IUniswapV2Router02 _routerV2) external onlyOwner {
+    //     routerV2 = _routerV2;
+    // }
 
     function setFactoryV3(IUniswapV3Factory _factoryV3) external onlyOwner {
         factoryV3 = _factoryV3;
@@ -292,15 +292,15 @@ contract FeeManager is Initializable, OwnableUpgradeable {
         returns (uint256 finalAmountOut)
     {
         if (amountIn > 0) {
-            if (_swapVersion == 3) {
-                finalAmountOut = estimateAmountOut(tokenIn, tokenOut, uint128(amountIn));
-            } else {
-                address[] memory path = new address[](2);
-                path[0] = tokenIn;
-                path[1] = tokenOut;
-                uint256[] memory v2amountOut = routerV2.getAmountsOut(amountIn, path);
-                finalAmountOut = v2amountOut[1];
-            }
+            // if (_swapVersion == 3) {
+            finalAmountOut = estimateAmountOut(tokenIn, tokenOut, uint128(amountIn));
+            // } else {
+            //     address[] memory path = new address[](2);
+            //     path[0] = tokenIn;
+            //     path[1] = tokenOut;
+            //     uint256[] memory v2amountOut = routerV2.getAmountsOut(amountIn, path);
+            //     finalAmountOut = v2amountOut[1];
+            // }
         }
 
         return finalAmountOut;

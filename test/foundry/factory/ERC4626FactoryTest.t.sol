@@ -32,9 +32,7 @@ contract ERC4626FactoryTest is Test {
 
         vm.startPrank(owner);
         factory.initialize(addressArray(tokens));
-
         assertEq(factory.owner(), owner, "Owner is not set correctly");
-
         vm.stopPrank();
 
         token = new MockERC20("Mock Token", "MCK");

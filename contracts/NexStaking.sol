@@ -37,7 +37,6 @@ contract NexStaking is Initializable, OwnableUpgradeable, ReentrancyGuardUpgrade
     mapping(address => uint8) public tokenSwapVersion;
     mapping(address => bool) public supportedTokens;
     mapping(address => bool) public supportedRewardTokens;
-    // mapping(address => address) public tokenAddressToVaultAddress;
     mapping(address => uint256) public numberOfStakersByTokenAddress;
     mapping(address => mapping(address => StakePositions)) public positions;
 

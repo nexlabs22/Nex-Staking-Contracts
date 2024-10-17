@@ -6,28 +6,28 @@ import {console} from "forge-std/console.sol";
 import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
-import {NexStaking} from "../contracts/NexStaking.sol";
+import {ERC4626Factory} from "../contracts/factory/ERC4626Factory.sol";
 
-contract UpgradeNexStaking is Script {
+contract UpgradeERC4626Factory is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
 
         // Addresses from environment variables
         address proxyAdminAddress = vm.envAddress("PROXY_ADMIN_ADDRESS");
-        address nexStakingProxyAddress = vm.envAddress("NEX_STAKING_PROXY_ADDRESS");
+        address erc4626FactoryProxyAddress = vm.envAddress("ERC4626_FACTORY_PROXY_ADDRESS");
 
         // Deploy the new implementation
-        NexStaking newNexStakingImplementation = new NexStaking();
-        console.log("New NexStaking implementation deployed at:", address(newNexStakingImplementation));
+        ERC4626Factory newERC4626FactoryImplementation = new ERC4626Factory();
+        console.log("New ERC4626Factory implementation deployed at:", address(newERC4626FactoryImplementation));
 
         // Upgrade the proxy to point to the new implementation
         ProxyAdmin proxyAdmin = ProxyAdmin(proxyAdminAddress);
         proxyAdmin.upgrade(
-            TransparentUpgradeableProxy(payable(nexStakingProxyAddress)), address(newNexStakingImplementation)
+            TransparentUpgradeableProxy(payable(erc4626FactoryProxyAddress)), address(newERC4626FactoryImplementation)
         );
 
-        console.log("NexStaking proxy upgraded to new implementation at:", address(newNexStakingImplementation));
+        console.log("ERC4626Factory proxy upgraded to new implementation at:", address(newERC4626FactoryImplementation));
 
         vm.stopBroadcast();
     }

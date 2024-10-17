@@ -6,28 +6,28 @@ import {console} from "forge-std/console.sol";
 import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
-import {NexStaking} from "../contracts/NexStaking.sol";
+import {FeeManager} from "../contracts/FeeManager.sol";
 
-contract UpgradeNexStaking is Script {
+contract UpgradeFeeManager is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
 
         // Addresses from environment variables
         address proxyAdminAddress = vm.envAddress("PROXY_ADMIN_ADDRESS");
-        address nexStakingProxyAddress = vm.envAddress("NEX_STAKING_PROXY_ADDRESS");
+        address feeManagerProxyAddress = vm.envAddress("FEE_MANAGER_PROXY_ADDRESS");
 
         // Deploy the new implementation
-        NexStaking newNexStakingImplementation = new NexStaking();
-        console.log("New NexStaking implementation deployed at:", address(newNexStakingImplementation));
+        FeeManager newFeeManagerImplementation = new FeeManager();
+        console.log("New FeeManager implementation deployed at:", address(newFeeManagerImplementation));
 
         // Upgrade the proxy to point to the new implementation
         ProxyAdmin proxyAdmin = ProxyAdmin(proxyAdminAddress);
         proxyAdmin.upgrade(
-            TransparentUpgradeableProxy(payable(nexStakingProxyAddress)), address(newNexStakingImplementation)
+            TransparentUpgradeableProxy(payable(feeManagerProxyAddress)), address(newFeeManagerImplementation)
         );
 
-        console.log("NexStaking proxy upgraded to new implementation at:", address(newNexStakingImplementation));
+        console.log("FeeManager proxy upgraded to new implementation at:", address(newFeeManagerImplementation));
 
         vm.stopBroadcast();
     }

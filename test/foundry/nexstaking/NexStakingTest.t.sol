@@ -1071,7 +1071,7 @@ contract NexStakingTest is Test {
             addressArray(rewardTokens),
             swapVersions,
             uniswapV3Router,
-            unsiwapV2Router,
+            // unsiwapV2Router,
             address(uniswapV3Factory),
             nonfungiblePositionManagerAddress,
             address(weth),

@@ -159,7 +159,7 @@ contract FeeManagerTest is Test {
             addressArray(rewardTokens),
             swapVersions,
             uniswapV3Router,
-            unsiwapV2Router,
+            // unsiwapV2Router,
             address(uniswapV3Factory),
             nonfungiblePositionManagerAddress,
             address(weth),
@@ -486,27 +486,27 @@ contract FeeManagerTest is Test {
         console.log("-----------------testSetRouterV3-----------------");
     }
 
-    function testSetRouterV2() public {
-        console.log("-----------------testSetRouterV2-----------------");
+    // function testSetRouterV2() public {
+    //     console.log("-----------------testSetRouterV2-----------------");
 
-        IUniswapV2Router02 newRouterV2 = IUniswapV2Router02(unsiwapV2Router);
+    //     IUniswapV2Router02 newRouterV2 = IUniswapV2Router02(unsiwapV2Router);
 
-        vm.prank(owner);
-        feeManager.setRouterV2(newRouterV2);
-        vm.stopPrank();
+    //     vm.prank(owner);
+    //     feeManager.setRouterV2(newRouterV2);
+    //     vm.stopPrank();
 
-        assertEq(address(feeManager.routerV2()), address(newRouterV2), "Router V2 should be updated");
+    //     assertEq(address(feeManager.routerV2()), address(newRouterV2), "Router V2 should be updated");
 
-        console.log("RouterV2 updated successfully");
+    //     console.log("RouterV2 updated successfully");
 
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, user));
+    //     vm.prank(user);
+    //     vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, user));
 
-        feeManager.setRouterV2(newRouterV2);
-        vm.stopPrank();
+    //     feeManager.setRouterV2(newRouterV2);
+    //     vm.stopPrank();
 
-        console.log("-----------------testSetRouterV2-----------------");
-    }
+    //     console.log("-----------------testSetRouterV2-----------------");
+    // }
 
     function testSetFactoryV3() public {
         console.log("-----------------testSetFactoryV3-----------------");

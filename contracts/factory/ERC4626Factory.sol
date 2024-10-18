@@ -15,7 +15,7 @@ contract ERC4626Factory is Initializable, OwnableUpgradeable {
 
     function initialize(address[] memory _indexTokensAddresses) public initializer {
         // Use __Ownable_init_unchained() instead of __Ownable_init()
-        __Ownable_init_unchained(msg.sender);
+        __Ownable_init(msg.sender);
 
         for (uint256 i = 0; i < _indexTokensAddresses.length; i++) {
             address vault = createERC4626Vault(_indexTokensAddresses[i]);
@@ -38,30 +38,3 @@ contract ERC4626Factory is Initializable, OwnableUpgradeable {
         return address(vault);
     }
 }
-// contract ERC4626Factory is Initializable, OwnableUpgradeable {
-//     mapping(address => address) public tokenAddressToVaultAddress;
-
-//     event VaultCreated(address indexed vault, address indexed underlyingAsset, string name, string symbol);
-
-//     function initialize(address[] memory _indexTokensAddresses) public initializer {
-//         __Ownable_init(msg.sender);
-
-//         for (uint256 i = 0; i < _indexTokensAddresses.length; i++) {
-//             address vault = createERC4626Vault(_indexTokensAddresses[i]);
-//             require(vault != address(0), "Invalid vault address");
-//             tokenAddressToVaultAddress[_indexTokensAddresses[i]] = vault;
-//         }
-//     }
-
-//     function createERC4626Vault(address _underlyingAsset) public /*onlyOwner*/ returns (address) {
-//         require(_underlyingAsset != address(0), "Invalid underlying asset address");
-
-//         string memory symbol = ERC20(_underlyingAsset).symbol();
-//         string memory name = string(abi.encodePacked("Vault ", symbol));
-//         string memory vaultSymbol = string(abi.encodePacked("v", symbol));
-
-//         ERC4626Vault vault = new ERC4626Vault(IERC20(_underlyingAsset), name, vaultSymbol);
-//         emit VaultCreated(address(vault), _underlyingAsset, name, vaultSymbol);
-//         return address(vault);
-//     }
-// }

@@ -3,8 +3,9 @@ pragma solidity ^0.8.0;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/Test.sol";
-import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import {ProxyAdmin} from "../lib/openzeppelin-contracts/contracts/proxy/transparent/ProxyAdmin.sol";
+import {TransparentUpgradeableProxy} from
+    "../lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 import {FeeManager} from "../contracts/FeeManager.sol";
 import {NexStaking} from "../contracts/NexStaking.sol";
@@ -20,7 +21,6 @@ contract DeployFeeManager is Script {
         address[] memory rewardTokensAddresses = getRewardTokens();
         uint8[] memory swapVersions = getSwapVersions();
         address uniswapRouter = vm.envAddress("TESTNET_UNISWAP_ROUTER");
-        address uniswapV2Router = vm.envAddress("TESTNET_UNISWAP_V2_ROUTER");
         address uniswapV3Factory = vm.envAddress("TESTNET_UNISWAP_V3_FACTORY");
         address nonfungiblePositionManager = vm.envAddress("TESTNET_NONFUNGIBLE_POSITION_MANAGER");
         address erc4626Factory = vm.envAddress("TESTNET_ERC4626_FACTORY");
@@ -28,31 +28,13 @@ contract DeployFeeManager is Script {
         address usdc = vm.envAddress("TESTNET_USDC");
         uint256 threshold = vm.envUint("THRESHOLD");
 
-        ProxyAdmin proxyAdmin = new ProxyAdmin(0x51256F5459C1DdE0C794818AF42569030901a098);
+        ProxyAdmin proxyAdmin = new ProxyAdmin();
 
         FeeManager feeManagerImplementation = new FeeManager();
 
         bytes memory data = abi.encodeWithSignature(
             "initialize(address,address[],address[],uint8[],address,address,address,address,address,uint256,address)",
-            NexStaking(nexStakingAddress),
-            indexTokensAddresses,
-            rewardTokensAddresses,
-            swapVersions,
-            uniswapRouter,
-            uniswapV2Router,
-            uniswapV3Factory,
-            nonfungiblePositionManager,
-            weth,
-            usdc,
-            threshold,
-            erc4626Factory
-        );
-
-        TransparentUpgradeableProxy proxy =
-            new TransparentUpgradeableProxy(address(feeManagerImplementation), address(proxyAdmin), data);
-
-        feeManagerImplementation.initialize(
-            NexStaking(nexStakingAddress),
+            nexStakingAddress,
             indexTokensAddresses,
             rewardTokensAddresses,
             swapVersions,
@@ -65,6 +47,9 @@ contract DeployFeeManager is Script {
             threshold,
             erc4626Factory
         );
+
+        TransparentUpgradeableProxy proxy =
+            new TransparentUpgradeableProxy(address(feeManagerImplementation), address(proxyAdmin), data);
 
         console.log("FeeManager implementation deployed at:", address(feeManagerImplementation));
         console.log("FeeManager proxy deployed at:", address(proxy));

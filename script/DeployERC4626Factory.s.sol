@@ -3,8 +3,9 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Script.sol";
 import "../contracts/factory/ERC4626Factory.sol";
-import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import {ProxyAdmin} from "../lib/openzeppelin-contracts/contracts/proxy/transparent/ProxyAdmin.sol";
+import {TransparentUpgradeableProxy} from
+    "../lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract DeployERC4626Factory is Script {
     function run() external {
@@ -14,20 +15,18 @@ contract DeployERC4626Factory is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        ProxyAdmin proxyAdmin = new ProxyAdmin(0x51256F5459C1DdE0C794818AF42569030901a098);
+        ProxyAdmin proxyAdmin = new ProxyAdmin();
 
-        ERC4626Factory factory = new ERC4626Factory();
+        ERC4626Factory factoryImplementation = new ERC4626Factory();
 
         bytes memory data = abi.encodeWithSignature("initialize(address[])", indexTokensAddresses);
 
-        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(address(factory), address(proxyAdmin), data);
+        TransparentUpgradeableProxy proxy =
+            new TransparentUpgradeableProxy(address(factoryImplementation), address(proxyAdmin), data);
 
-        factory.initialize(indexTokensAddresses);
-
-        console.log("ERC4626Factory deployed at:", address(factory));
-        console.log("FeeManager proxy deployed at:", address(proxy));
+        console.log("ERC4626Factory implementation deployed at:", address(factoryImplementation));
+        console.log("ERC4626Factory proxy deployed at:", address(proxy));
         console.log("ProxyAdmin deployed at:", address(proxyAdmin));
-        console.log("Msg Sender: ", msg.sender);
 
         vm.stopBroadcast();
     }

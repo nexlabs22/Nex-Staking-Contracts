@@ -36,7 +36,7 @@ The **Nex Staking Contracts** project provides a robust and flexible staking pla
 
 ### Contracts
 
-#### NexStaking.sol
+#### [NexStaking.sol](https://github.com/nexlabs22/Nex-Staking-Contracts/blob/main/contracts/NexStaking.sol)
 
 The **NexStaking** contract is the core of the staking platform, allowing users to stake supported tokens and earn rewards. It manages user positions, interacts with ERC4626 vaults for asset management, and handles the staking and unstaking logic.
 
@@ -47,7 +47,7 @@ The **NexStaking** contract is the core of the staking platform, allowing users 
 - **Reward Distribution**: Users can choose to receive rewards in the staked token or swap them for other supported reward tokens via Uniswap V3.
 - **Fee Deduction**: Applies a configurable fee percentage on staking and unstaking amounts, transferring fees to the team wallet.
 
-#### FeeManager.sol
+#### [FeeManager.sol](https://github.com/nexlabs22/Nex-Staking-Contracts/blob/main/contracts/FeeManager.sol)
 
 The **FeeManager** contract is responsible for managing the fees collected and handling the distribution of rewards.
 
@@ -60,7 +60,7 @@ The **FeeManager** contract is responsible for managing the fees collected and h
   - **Staking Pools**: Sends the remaining ETH to the **ERC4626 Vault** contracts to be distributed as rewards to stakers.
 - **Reward Allocation**: Calculates the weight of each staking pool based on the total value of assets and distributes rewards proportionally.
 
-#### ERC4626Factory.sol
+#### [ERC4626Factory.sol](https://github.com/nexlabs22/Nex-Staking-Contracts/blob/main/contracts/factory/ERC4626Factory.sol)
 
 The **ERC4626Factory** contract is a factory responsible for deploying ERC4626 vaults for each supported staking token.
 
@@ -70,7 +70,7 @@ The **ERC4626Factory** contract is a factory responsible for deploying ERC4626 v
 - **Mapping Management**: Maintains a registry mapping each underlying asset to its corresponding vault address.
 - **Scalability**: Allows for easy addition of new staking tokens by deploying new vaults as needed.
 
-#### ERC4626Vault.sol
+#### [ERC4626Vault.sol](https://github.com/nexlabs22/Nex-Staking-Contracts/blob/main/contracts/factory/ERC4626Vault.sol)
 
 The **ERC4626Vault** contract is an implementation of the ERC4626 tokenized vault standard, representing a vault for a specific underlying asset.
 

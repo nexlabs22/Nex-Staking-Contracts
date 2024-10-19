@@ -97,21 +97,24 @@ The **ERC4626Vault** contract is an implementation of the ERC4626 tokenized vaul
    cd Nex-Staking-Contracts-V3
    ```
 
-2. **Install Dependencies**
+2. **Star the Repository**
+
+   If you find this project helpful, please consider giving it a star on GitHub!
+
+   [⭐ Star this repository](https://github.com/nexlabs22/Nex-Staking-Contracts)
+
+3. **Install Dependencies**
 
    Use Foundry's dependency management to install all required packages.
 
    ```bash
    forge install
+   npm install
    ```
 
-   ```bash
-    npm install
-   ```
+4. **Configure Environment Variables**
 
-3. **Configure Environment Variables**
-
-   Create a `.env` file like `.env.example` at the root of the project and add the necessary environment variables:
+   Create a `.env` file at the root of the project and add the necessary environment variables:
 
    ```dotenv
    PRIVATE_KEY=your_private_key

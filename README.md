@@ -114,7 +114,7 @@ The **ERC4626Vault** contract is an implementation of the ERC4626 tokenized vaul
 
 4. **Configure Environment Variables**
 
-   Create a `.env` file at the root of the project and add the necessary environment variables:
+   Create a `.env` file like `.env.example` at the root of the project and add the necessary environment variables:
 
    ```dotenv
    PRIVATE_KEY=your_private_key

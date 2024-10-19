@@ -93,7 +93,7 @@ The **ERC4626Vault** contract is an implementation of the ERC4626 tokenized vaul
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/yourusername/Nex-Staking-Contracts.git
+   git clone https://github.com/nexlabs22/Nex-Staking-Contracts.git
    cd Nex-Staking-Contracts
    ```
 

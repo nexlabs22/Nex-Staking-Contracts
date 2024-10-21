@@ -6,18 +6,21 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 
 import {NexStaking} from "./NexStaking.sol";
+import {ERC4626Factory} from "./factory/ERC4626Factory.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {SwapHelpers} from "./libraries/SwapHelpers.sol";
 import {IUniswapV2Router02} from "./interfaces/IUniswapV2Router02.sol";
 import {OracleLibrary} from "./libraries/OracleLibrary.sol";
 import {INonfungiblePositionManager} from "./uniswap/INonfungiblePositionManager.sol";
 
-contract FeeManager is OwnableUpgradeable {
+contract FeeManager is Initializable, OwnableUpgradeable {
     using SafeERC20 for IERC20;
 
     NexStaking public nexStaking;
+    ERC4626Factory public erc4626Factory;
     ISwapRouter public routerV3;
     IUniswapV2Router02 public routerV2;
     IUniswapV3Factory public factoryV3;
@@ -36,6 +39,8 @@ contract FeeManager is OwnableUpgradeable {
     event RewardDistributionSkipped(address indexed tokenAddress, string reason);
     event TransferToOwner(uint256 indexed usdcAmount, uint256 timestamp);
     event TokensSwapped(address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut);
+    event RewardTokensUpdated(address[] newRewardTokens);
+    event PoolTokensUpdated(address[] newPoolTokens);
 
     function initialize(
         NexStaking _nexStakingAddress,
@@ -43,22 +48,23 @@ contract FeeManager is OwnableUpgradeable {
         address[] memory _rewardTokensAddresses,
         uint8[] memory _swapVersions,
         address _uniswapRouter,
-        address _uniswapV2Router,
+        // address _uniswapV2Router,
         address _uniswapV3Factory,
         address _nonfungiblePositionManager,
         address _weth,
         address _usdc,
-        uint256 _threshold
+        uint256 _threshold,
+        address _erc4626Factory // Add this parameter
     ) public initializer {
         __Ownable_init(msg.sender);
 
         nexStaking = NexStaking(_nexStakingAddress);
+        erc4626Factory = ERC4626Factory(_erc4626Factory); // Initialize erc4626Factory
         routerV3 = ISwapRouter(_uniswapRouter);
-        routerV2 = IUniswapV2Router02(_uniswapV2Router);
+        // routerV2 = IUniswapV2Router02(_uniswapV2Router);
         nonfungiblePositionManager = INonfungiblePositionManager(_nonfungiblePositionManager);
         weth = IWETH9(_weth);
         usdc = IERC20(_usdc);
-        // threshold = _threshold * 10 ** 18;
         threshold = _threshold;
         factoryV3 = IUniswapV3Factory(_uniswapV3Factory);
 
@@ -78,7 +84,7 @@ contract FeeManager is OwnableUpgradeable {
         uint256 balance = address(this).balance;
         weth.deposit{value: balance}();
 
-        uint256 totalValueOfPoolsInWETH = getTotalValueOfIndexTokensInWETH();
+        uint256 totalValueOfPoolsInWETH = getTotalValueOfAssetsInWeTH();
         require(totalValueOfPoolsInWETH >= threshold, "WETH balance is below the threshold");
 
         _swapRewardTokensToWETH();
@@ -113,7 +119,7 @@ contract FeeManager is OwnableUpgradeable {
         uint256[] memory poolWeights = calculateWeightOfPools();
 
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
-            address vault = nexStaking.tokenAddressToVaultAddress(poolTokensAddresses[i]);
+            address vault = erc4626Factory.tokenAddressToVaultAddress(poolTokensAddresses[i]);
 
             uint256 wethAmountForPool = (wethForStaking * poolWeights[i]) / 1e18;
             if (wethAmountForPool == 0) {
@@ -132,7 +138,7 @@ contract FeeManager is OwnableUpgradeable {
         uint256[] memory weights = new uint256[](poolTokensAddresses.length);
 
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
-            address vault = nexStaking.tokenAddressToVaultAddress(poolTokensAddresses[i]);
+            address vault = erc4626Factory.tokenAddressToVaultAddress(poolTokensAddresses[i]);
             uint256 balance = IERC20(poolTokensAddresses[i]).balanceOf(vault);
 
             uint256 poolValue =
@@ -151,15 +157,8 @@ contract FeeManager is OwnableUpgradeable {
     function getPortfolioBalance() public view returns (uint256 totalValue) {
         for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
             address tokenAddress = poolTokensAddresses[i];
-            address vault = nexStaking.tokenAddressToVaultAddress(tokenAddress);
+            address vault = erc4626Factory.tokenAddressToVaultAddress(tokenAddress);
             uint256 balance = IERC20(tokenAddress).balanceOf(vault);
-
-            // if (tokenAddress == address(weth)) {
-            //     totalValue += balance;
-            // } else {
-            //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-            //     totalValue += value;
-            // }
 
             uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
             totalValue += value;
@@ -168,19 +167,11 @@ contract FeeManager is OwnableUpgradeable {
         return totalValue;
     }
 
-    function getTotalValueOfIndexTokensInWETH() public view returns (uint256 totalValue) {
+    function getTotalValueOfAssetsInWeTH() public view returns (uint256 totalValue) {
         for (uint256 i = 0; i < rewardTokensAddresses.length; i++) {
             address tokenAddress = rewardTokensAddresses[i];
             uint256 balance = IERC20(tokenAddress).balanceOf(address(this));
 
-            // if (tokenAddress == address(weth)) {
-            //     totalValue += balance;
-            // } else {
-            //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-            //     totalValue += value;
-            // }
-
-            // uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
             uint256 value = getAmountOut(tokenAddress, address(weth), balance, 3);
             totalValue += value;
         }
@@ -192,36 +183,13 @@ contract FeeManager is OwnableUpgradeable {
         return totalValue;
     }
 
-    // function getTotalValueOfIndexTokensInWETH() public view returns (uint256 totalValue) {
-    //     for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
-    //         address tokenAddress = poolTokensAddresses[i];
-    //         uint256 balance = IERC20(tokenAddress).balanceOf(address(this));
-
-    //         // if (tokenAddress == address(weth)) {
-    //         //     totalValue += balance;
-    //         // } else {
-    //         //     uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-    //         //     totalValue += value;
-    //         // }
-
-    //         uint256 value = getAmountOut(tokenAddress, address(weth), balance, tokenSwapVersion[tokenAddress]);
-    //         totalValue += value;
-    //     }
-    //     uint256 ethBalance = address(this).balance;
-    //     uint256 wethBalance = weth.balanceOf(address(this));
-    //     totalValue += ethBalance;
-    //     totalValue += wethBalance;
-
-    //     return totalValue;
-    // }
-
     function predictAPY(address tokenAddress, uint256 etherAmount) external view returns (uint256 apy) {
         require(supportedToken[tokenAddress], "Unsupported token.");
 
         address pool = factoryV3.getPool(tokenAddress, address(weth), 3000);
         require(pool != address(0), "Pool does not exist.");
 
-        address vault = nexStaking.tokenAddressToVaultAddress(tokenAddress);
+        address vault = erc4626Factory.tokenAddressToVaultAddress(tokenAddress);
 
         uint256 totalTokenInPool = IERC20(tokenAddress).balanceOf(vault);
 
@@ -234,6 +202,58 @@ contract FeeManager is OwnableUpgradeable {
         }
 
         return apy;
+    }
+
+    function _setERC4626Factory(ERC4626Factory _erc4626Factory) external onlyOwner {
+        erc4626Factory = _erc4626Factory;
+    }
+
+    function setNexStaking(NexStaking _nexStakingAddress) external onlyOwner {
+        nexStaking = _nexStakingAddress;
+    }
+
+    function setRouterV3(ISwapRouter _routerV3) external onlyOwner {
+        routerV3 = _routerV3;
+    }
+
+    // function setRouterV2(IUniswapV2Router02 _routerV2) external onlyOwner {
+    //     routerV2 = _routerV2;
+    // }
+
+    function setFactoryV3(IUniswapV3Factory _factoryV3) external onlyOwner {
+        factoryV3 = _factoryV3;
+    }
+
+    function setUsdc(IERC20 _usdc) external onlyOwner {
+        usdc = _usdc;
+    }
+
+    function setNonfungiblePositionManager(INonfungiblePositionManager _nonfungiblePositionManager)
+        external
+        onlyOwner
+    {
+        nonfungiblePositionManager = _nonfungiblePositionManager;
+    }
+
+    function setThreshold(uint256 _threshold) public onlyOwner {
+        threshold = _threshold;
+    }
+
+    function setRewardTokensAddresses(address[] memory _newRewardTokensAddresses) public onlyOwner {
+        require(_newRewardTokensAddresses.length > 0, "New reward tokens array cannot be empty");
+        rewardTokensAddresses = _newRewardTokensAddresses;
+
+        emit RewardTokensUpdated(_newRewardTokensAddresses);
+    }
+
+    function setPoolTokensAddresses(address[] memory _newPoolTokensAddresses) external onlyOwner {
+        require(_newPoolTokensAddresses.length > 0, "New pool tokens array cannot be empty");
+        poolTokensAddresses = _newPoolTokensAddresses;
+        for (uint256 i = 0; i < poolTokensAddresses.length; i++) {
+            supportedToken[poolTokensAddresses[i]] = true;
+        }
+
+        emit PoolTokensUpdated(_newPoolTokensAddresses);
     }
 
     function getAmountOutForRewardAmount(address tokenIn, address tokenOut, uint256 amountIn)
@@ -272,15 +292,15 @@ contract FeeManager is OwnableUpgradeable {
         returns (uint256 finalAmountOut)
     {
         if (amountIn > 0) {
-            if (_swapVersion == 3) {
-                finalAmountOut = estimateAmountOut(tokenIn, tokenOut, uint128(amountIn));
-            } else {
-                address[] memory path = new address[](2);
-                path[0] = tokenIn;
-                path[1] = tokenOut;
-                uint256[] memory v2amountOut = routerV2.getAmountsOut(amountIn, path);
-                finalAmountOut = v2amountOut[1];
-            }
+            // if (_swapVersion == 3) {
+            finalAmountOut = estimateAmountOut(tokenIn, tokenOut, uint128(amountIn));
+            // } else {
+            //     address[] memory path = new address[](2);
+            //     path[0] = tokenIn;
+            //     path[1] = tokenOut;
+            //     uint256[] memory v2amountOut = routerV2.getAmountsOut(amountIn, path);
+            //     finalAmountOut = v2amountOut[1];
+            // }
         }
 
         return finalAmountOut;
